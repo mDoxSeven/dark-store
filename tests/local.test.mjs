@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
-import { assertStoreOwner, APPLICATION_ID, DEFAULT_SUPPORT_ROLE_IDS, MODE, STORE_GUILD_ID, STORE_LAYOUT, supportRoleIds } from '../src/store/config.ts';
+import { assertStoreOwner, APPLICATION_ID, DEFAULT_SUPPORT_ROLE_IDS, MODE, STORE_GUILD_ID, STORE_LAYOUT, UNVERIFIED_ROLE_ID, VERIFIED_ROLE_ID, supportRoleIds } from '../src/store/config.ts';
 import { validateProduct, productMessage } from '../src/store/product.ts';
 import { sealStock, unsealStock } from '../src/store/crypto.ts';
 import { randomBytes } from 'node:crypto';
@@ -16,6 +16,7 @@ import { auditActionName, parseRoleButton } from '../src/discord/ids.ts';
 import { buildPixPayload, crc16, pixQrPng, validatePixSettings } from '../src/store/pix.ts';
 import { SPOTIFY_SELECT_ID, spotifyCatalogMessage } from '../src/store/spotifyMessage.ts';
 import { DISCORD_BANNER_URL, DISCORD_SELECT_ID, discordCatalogMessage } from '../src/store/discordMessage.ts';
+import { VERIFICATION_BANNER_URL, VERIFICATION_BUTTON_ID, verificationMessage } from '../src/store/verificationMessage.ts';
 import { confirmationTicketMessage, parseTicketButton, paymentTicketMessage, ticketButtonId } from '../src/store/tickets.ts';
 
 const root = resolve(import.meta.dirname, '..');
@@ -28,6 +29,9 @@ test('identidade independente e estrutura prevista são fixas', () => {
   assert.equal(STORE_LAYOUT.flatMap(g => g.channels).filter(c => c.type === 2).length, 2);
   assert.ok(STORE_LAYOUT.flatMap(g => g.channels).some(c => c.name === 'spotify'));
   assert.ok(STORE_LAYOUT.flatMap(g => g.channels).some(c => c.name === 'discord'));
+  assert.ok(STORE_LAYOUT.flatMap(g => g.channels).some(c => c.key === 'verificationChannel'));
+  assert.equal(UNVERIFIED_ROLE_ID, '1547683703227154542');
+  assert.equal(VERIFIED_ROLE_ID, '1548020246537830520');
   assert.ok(STORE_LAYOUT.some(g => g.key === 'tickets' && 'private' in g));
   assert.deepEqual(supportRoleIds(null), [...DEFAULT_SUPPORT_ROLE_IDS]);
   assert.deepEqual(DEFAULT_SUPPORT_ROLE_IDS, ['1548020621760274492', '1548020929962180658']);
@@ -35,7 +39,7 @@ test('identidade independente e estrutura prevista são fixas', () => {
   assert.throws(() => assertStoreOwner('outro', '1002774556269891694'));
 });
 
-test('catálogos Discord e Spotify e ticket usam Components V2 e botões cinza', () => {
+test('verificação, catálogos e ticket usam Components V2 e botões cinza', () => {
   const products = Array.from({ length: 30 }, (_, index) => ({ id: `produto${index}`, title: `Item ${index}`, description: '', priceCents: 1990, stock: index === 0 ? 0 : 2 }));
   const catalog = spotifyCatalogMessage(products);
   assert.equal(catalog.flags, 32768);
@@ -48,6 +52,13 @@ test('catálogos Discord e Spotify e ticket usam Components V2 e botões cinza',
   assert.equal(discordSelect.custom_id, DISCORD_SELECT_ID);
   assert.ok(discord.components[0].components.find(component => component.type === 12).items[0].media.url.endsWith('/contas-discord-banner-dark.png'));
   assert.match(DISCORD_BANNER_URL, /^https:\/\//);
+  const verification = verificationMessage();
+  const verificationButton = verification.components[0].components.find(component => component.type === 1).components[0];
+  assert.equal(verification.flags, 32768);
+  assert.equal(verificationButton.custom_id, VERIFICATION_BUTTON_ID);
+  assert.equal(verificationButton.style, 2);
+  assert.ok(verification.components[0].components.find(component => component.type === 12).items[0].media.url.endsWith('/verificacao-banner-dark.png'));
+  assert.match(VERIFICATION_BANNER_URL, /^https:\/\//);
   const id = ticketButtonId('confirm', 'ticket_123456');
   assert.deepEqual(parseTicketButton(id), { action: 'confirm', ticketId: 'ticket_123456' });
   assert.equal(parseTicketButton('store:ticket:admin:ticket_123456'), null);
@@ -160,6 +171,7 @@ test('painel local executa fluxo completo sem OAuth, token ou Discord', async ()
     assert.equal(state.channels.filter(c => c.type === 2).length, 2);
     assert.ok(state.channels.some(c => c.key === 'discord' && c.type === 0));
     assert.ok(state.channels.some(c => c.key === 'spotify' && c.type === 0));
+    assert.ok(state.channels.some(c => c.key === 'verificationChannel' && c.type === 0));
     assert.deepEqual(state.roles, []);
     const channelId = state.channels.find(c => c.key === 'accounts').id;
     const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');

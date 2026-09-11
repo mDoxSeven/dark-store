@@ -16,6 +16,7 @@ Aplicação Discord e painel privado independentes do empty.
 - cobrança Pix estática por pedido, com valor exato, txid, copia e cola e QR Code privado;
 - canal `spotify` com catálogo V2 automático para itens digitais autorizados cadastrados nessa categoria;
 - canal `discord` com a arte cromada aprovada e catálogo V2 próprio;
+- entrada protegida por um canal de verificação V2 com arte própria e botão cinza;
 - ticket privado com confirmação, recusa com exclusão automática e botão para notificar o atendimento;
 - editor completo de Components V2 com Markdown, galeria, thumbnail, divisores e anexos;
 - botões V2 de link ou cargo, com adicionar, remover ou alternar;
@@ -78,6 +79,10 @@ O `/criar` adiciona o canal `spotify` e a categoria privada de atendimentos. No 
 Em `configurações`, escolha os cargos de atendimento usados por **Notificar administrador**. Os cargos `1548020621760274492` e `1548020929962180658` são carregados como padrão. Se nenhum cargo válido existir, o botão notifica o responsável da loja. Use o catálogo somente para códigos, gift cards, assinaturas e outros itens que você esteja autorizado a comercializar; o sistema não deve ser usado para transferir contas ou credenciais de terceiros.
 
 O mesmo fluxo existe no canal `discord`: cadastre produtos ativos com a categoria exatamente `discord`. Cada produto mantém seu próprio estoque automático e sua própria quantidade manual, sem misturar as unidades de produtos diferentes.
+
+## Verificação de entrada
+
+O `/criar` valida os cargos `1547683703227154542` (entrada pendente) e `1548020246537830520` (membro verificado), cria o canal `verificacao`, aplica as permissões da estrutura e publica o painel V2. Novos membros recebem automaticamente o cargo de entrada e enxergam apenas a verificação. Ao clicar em **Verificar**, o bot adiciona o cargo verificado, remove o cargo inicial e libera os canais públicos. Os dois cargos precisam existir e ficar abaixo do cargo do bot.
 
 ## Estoque automático e manual
 

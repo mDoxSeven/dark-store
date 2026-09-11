@@ -7,7 +7,9 @@ import { prisma } from '../lib/db.js';
 import { AntiRaidEngine, respondToRaid, type AntiRaidResponder } from '../antiRaid.js';
 import { criarCommand, executeCriar } from '../bot/criar.js';
 import { configureDiscordRuntime } from '../runtime.js';
-import { APPLICATION_ID, STORE_GUILD_ID, STORE_OWNER_ID, supportRoleIds } from '../store/config.js';
+import {
+  APPLICATION_ID, STORE_GUILD_ID, STORE_OWNER_ID, UNVERIFIED_ROLE_ID, VERIFIED_ROLE_ID, supportRoleIds,
+} from '../store/config.js';
 import { createOrder } from '../store/orders.js';
 import { getAntiRaidSettings } from '../service.js';
 import { discordRuntime } from './transport.js';
@@ -17,6 +19,8 @@ import { refreshSpotifyCatalog } from '../store/spotify.js';
 import { SPOTIFY_SELECT_ID } from '../store/spotifyMessage.js';
 import { refreshDiscordCatalog } from '../store/discordCatalog.js';
 import { DISCORD_SELECT_ID } from '../store/discordMessage.js';
+import { refreshVerificationPanel } from '../store/verification.js';
+import { VERIFICATION_BUTTON_ID } from '../store/verificationMessage.js';
 import { confirmationTicketMessage, parseTicketButton, paymentTicketMessage } from '../store/tickets.js';
 const errorText = (error: unknown) => error instanceof Error ? error.message.slice(0, 1500) : 'Ação não concluída.';
 
@@ -27,12 +31,12 @@ async function handleCriar(interaction: ChatInputCommandInteraction) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const confirmed = interaction.options.getBoolean('confirmar') === true;
   const result = await executeCriar(interaction.guild, interaction.user.id, confirmed);
-  if (!result.preview) await Promise.all([refreshSpotifyCatalog(), refreshDiscordCatalog()]);
+  if (!result.preview) await Promise.all([refreshSpotifyCatalog(), refreshDiscordCatalog(), refreshVerificationPanel()]);
   if (result.preview) {
     const count = result.layout.reduce((total, group) => total + group.channels.length, 0);
     await interaction.editReply(`Prévia pronta: ${result.layout.length} categorias e ${count} canais. Execute novamente marcando **confirmar: Sim**.`);
   } else {
-    await interaction.editReply(result.created.length ? `Estrutura pronta. Criados: ${result.created.join(', ')}.` : 'A estrutura já estava pronta; nenhum canal foi duplicado.');
+    await interaction.editReply(result.created.length ? `Estrutura pronta. Criados ou ajustados: ${result.created.join(', ')}.` : 'Estrutura validada: canais, cargos, permissões e painéis já estavam prontos.');
   }
 }
 
@@ -163,6 +167,26 @@ async function handleRoleButton(interaction: ButtonInteraction, parsed: NonNulla
   await interaction.editReply(nowHasRole ? `Cargo **${role.name}** adicionado.` : `Cargo **${role.name}** removido.`);
 }
 
+async function handleVerification(interaction: ButtonInteraction) {
+  if (interaction.guildId !== STORE_GUILD_ID || !interaction.guild) throw new Error('Verificação fora do servidor autorizado.');
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const member = await interaction.guild.members.fetch(interaction.user.id);
+  if (member.user.bot) throw new Error('Bots não utilizam a verificação de membros.');
+  const [unverified, verified, antiRaid] = await Promise.all([
+    interaction.guild.roles.fetch(UNVERIFIED_ROLE_ID),
+    interaction.guild.roles.fetch(VERIFIED_ROLE_ID),
+    prisma.antiRaidConfig.findUnique({ where: { guildId: STORE_GUILD_ID } }),
+  ]);
+  if (!unverified || unverified.managed || !unverified.editable) throw new Error('O cargo inicial não existe ou está acima do cargo do bot.');
+  if (!verified || verified.managed || !verified.editable) throw new Error('O cargo verificado não existe ou está acima do cargo do bot.');
+  if (antiRaid?.quarantineRoleId && member.roles.cache.has(antiRaid.quarantineRoleId)) {
+    throw new Error('Sua entrada está em análise pela proteção do servidor.');
+  }
+  if (!member.roles.cache.has(verified.id)) await member.roles.add(verified, 'Verificação concluída na dark store');
+  if (member.roles.cache.has(unverified.id)) await member.roles.remove(unverified, 'Verificação concluída na dark store');
+  await interaction.editReply('Verificação concluída. O acesso à loja foi liberado.');
+}
+
 async function handlePurchase(interaction: ButtonInteraction) {
   if (interaction.guildId !== STORE_GUILD_ID) throw new Error('Compra fora do servidor autorizado.');
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -226,7 +250,8 @@ export async function startDiscord(token: string) {
       else if (interaction.isButton()) {
         const role = parseRoleButton(interaction.customId);
         const ticket = parseTicketButton(interaction.customId);
-        if (role) await handleRoleButton(interaction, role);
+        if (interaction.customId === VERIFICATION_BUTTON_ID) await handleVerification(interaction);
+        else if (role) await handleRoleButton(interaction, role);
         else if (ticket) await handleTicketButton(interaction, ticket, notifyCooldowns);
         else if (interaction.customId.startsWith('store:buy:')) await handlePurchase(interaction);
       }
@@ -241,6 +266,9 @@ export async function startDiscord(token: string) {
   client.on(Events.GuildMemberAdd, joined => {
     void (async () => {
       if (joined.guild.id !== STORE_GUILD_ID || joined.user.bot) return;
+      const unverified = await joined.guild.roles.fetch(UNVERIFIED_ROLE_ID);
+      if (!unverified || unverified.managed || !unverified.editable) throw new Error('Cargo inicial ausente ou acima do bot. Execute /criar após corrigir a hierarquia.');
+      await joined.roles.add(unverified, 'Entrada na dark store: verificação pendente');
       const settings = await getAntiRaidSettings();
       const result = raid.join(settings, joined.user.createdTimestamp);
       if (result.detected) await respondToRaid(prisma, settings, joined.id, 'JOIN_ALERT', result.reasons, responder(joined.guild));

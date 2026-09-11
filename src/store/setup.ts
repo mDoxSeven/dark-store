@@ -1,6 +1,8 @@
 import { ChannelType, OverwriteType, PermissionFlagsBits, type Guild } from "discord.js";
 import { prisma } from "../lib/db.js";
-import { STORE_GUILD_ID, STORE_OWNER_ID, STORE_LAYOUT, assertStoreOwner } from "./config.js";
+import {
+  STORE_GUILD_ID, STORE_OWNER_ID, STORE_LAYOUT, UNVERIFIED_ROLE_ID, VERIFIED_ROLE_ID, assertStoreOwner,
+} from "./config.js";
 
 export async function setupStore(guild: Guild, actorId: string) {
   assertStoreOwner(guild.id, actorId);
@@ -16,6 +18,19 @@ export async function setupStore(guild: Guild, actorId: string) {
   const created: string[] = [];
   try {
     const roles = await guild.roles.fetch();
+    const unverified = roles.get(UNVERIFIED_ROLE_ID);
+    const verified = roles.get(VERIFIED_ROLE_ID);
+    if (!unverified || unverified.managed || !unverified.editable) {
+      throw new Error(`O cargo inicial ${UNVERIFIED_ROLE_ID} não existe ou está acima do cargo do bot.`);
+    }
+    if (!verified || verified.managed || !verified.editable) {
+      throw new Error(`O cargo verificado ${VERIFIED_ROLE_ID} não existe ou está acima do cargo do bot.`);
+    }
+    if (unverified.id === verified.id) throw new Error('Os cargos inicial e verificado precisam ser diferentes.');
+    if (unverified.permissions.bitfield !== 0n) {
+      await unverified.setPermissions([], 'Cargo inicial sem permissões até a verificação');
+      created.push(`Permissões do cargo ${unverified.name}`);
+    }
     let quarantine = roles.get(ids.quarantineRole);
     if (!quarantine || quarantine.managed) {
       quarantine = await guild.roles.create({ name: 'Quarentena', permissions: [], reason: 'Proteção anti-raid da dark store' });
@@ -26,8 +41,17 @@ export async function setupStore(guild: Guild, actorId: string) {
     await prisma.antiRaidConfig.upsert({ where: { guildId: guild.id }, create: { guildId: guild.id, quarantineRoleId: quarantine.id }, update: { quarantineRoleId: quarantine.id } });
     for (const group of STORE_LAYOUT) {
       const privacy = "private" in group && group.private;
+      const verification = "verification" in group && group.verification;
       const permissions = (readOnly: boolean) => [
-        { id: guild.id, type: OverwriteType.Role, deny: privacy ? [PermissionFlagsBits.ViewChannel] : readOnly ? [PermissionFlagsBits.SendMessages, PermissionFlagsBits.CreatePublicThreads, PermissionFlagsBits.CreatePrivateThreads, PermissionFlagsBits.SendMessagesInThreads] : [] },
+        { id: guild.id, type: OverwriteType.Role,
+          allow: verification ? [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory] : [],
+          deny: verification ? [PermissionFlagsBits.SendMessages, PermissionFlagsBits.CreatePublicThreads, PermissionFlagsBits.CreatePrivateThreads, PermissionFlagsBits.SendMessagesInThreads, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak] : [PermissionFlagsBits.ViewChannel] },
+        { id: unverified.id, type: OverwriteType.Role,
+          allow: verification ? [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory] : [],
+          deny: verification ? [PermissionFlagsBits.SendMessages, PermissionFlagsBits.CreatePublicThreads, PermissionFlagsBits.CreatePrivateThreads, PermissionFlagsBits.SendMessagesInThreads, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak] : [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak] },
+        { id: verified.id, type: OverwriteType.Role,
+          allow: verification || privacy ? [] : [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.SendMessages, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak],
+          deny: verification || privacy ? [PermissionFlagsBits.ViewChannel] : readOnly ? [PermissionFlagsBits.SendMessages, PermissionFlagsBits.CreatePublicThreads, PermissionFlagsBits.CreatePrivateThreads, PermissionFlagsBits.SendMessagesInThreads] : [] },
         { id: quarantine.id, type: OverwriteType.Role, deny: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak] },
         { id: bot.id, type: OverwriteType.Member, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak] },
         { id: STORE_OWNER_ID, type: OverwriteType.Member, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak] },
@@ -39,7 +63,7 @@ export async function setupStore(guild: Guild, actorId: string) {
         await prisma.digitalStore.update({ where: { guildId: guild.id }, data: { channelsJson: JSON.stringify(ids) } });
         created.push(group.name);
       }
-      await category.permissionOverwrites.edit(quarantine.id, { ViewChannel: false, SendMessages: false, Connect: false, Speak: false }, { reason: 'Proteção anti-raid da dark store' });
+      await category.permissionOverwrites.set(permissions(false), 'Permissões de entrada e verificação da dark store');
       for (const item of group.channels) {
         let channel = channels.get(ids[item.key]);
         if (!channel || channel.type !== item.type) {
@@ -50,11 +74,15 @@ export async function setupStore(guild: Guild, actorId: string) {
           await prisma.digitalStore.update({ where: { guildId: guild.id }, data: { channelsJson: JSON.stringify(ids) } });
           created.push(item.name);
         }
-        if (channel) await channel.permissionOverwrites.edit(quarantine.id, { ViewChannel: false, SendMessages: false, Connect: false, Speak: false }, { reason: 'Proteção anti-raid da dark store' });
+        if (channel) {
+          if (channel.parentId !== category.id) await channel.setParent(category.id, { lockPermissions: false, reason: 'Estrutura da dark store' });
+          await channel.permissionOverwrites.set(permissions(item.readOnly), 'Permissões de entrada e verificação da dark store');
+        }
       }
     }
     await prisma.digitalStore.update({ where: { guildId: STORE_GUILD_ID }, data: {
       ordersChannelId: settings.ordersChannelId ?? ids.orders, salesChannelId: settings.salesChannelId ?? ids.completed,
+      verificationChannelId: ids.verificationChannel,
       discordChannelId: ids.discord,
       spotifyChannelId: ids.spotify,
     } });

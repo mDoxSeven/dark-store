@@ -8,6 +8,8 @@ export const APPLICATION_ID = configuredId('DARK_APPLICATION_ID', '1547707174254
 export const MODE = process.env.DARK_DISCORD_TOKEN ? 'discord-live' as const : 'local-simulation' as const;
 export const STORE_OWNER_ID = configuredId('DARK_OWNER_ID', '1002774556269891694');
 export const DEFAULT_SUPPORT_ROLE_IDS = ['1548020621760274492', '1548020929962180658'] as const;
+export const UNVERIFIED_ROLE_ID = configuredId('DARK_UNVERIFIED_ROLE_ID', '1547683703227154542');
+export const VERIFIED_ROLE_ID = configuredId('DARK_VERIFIED_ROLE_ID', '1548020246537830520');
 
 export function supportRoleIds(settings: { supportRoleIds?: string | null; supportRoleId?: string | null } | null | undefined) {
   let saved: unknown = [];
@@ -26,6 +28,9 @@ export function assertStoreOwner(guildId: string, userId: string) {
 }
 
 export const STORE_LAYOUT = [
+  { key: "verification", name: "ENTRADA • VERIFICAÇÃO", verification: true, channels: [
+    { key: "verificationChannel", name: "verificacao", type: 0, readOnly: true },
+  ] },
   { key: "info", name: "INFORMAÇÕES • LOJA", channels: [
     { key: "welcome", name: "boas-vindas", type: 0, readOnly: true },
     { key: "rules", name: "regras", type: 0, readOnly: true },

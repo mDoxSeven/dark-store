@@ -13,6 +13,7 @@ import { AntiRaidEngine, respondToRaid, validateAntiRaid, type AntiRaidSettings 
 import { pixQrPng, validatePixSettings } from './store/pix.js';
 import { refreshSpotifyCatalog } from './store/spotify.js';
 import { refreshDiscordCatalog } from './store/discordCatalog.js';
+import { refreshVerificationPanel } from './store/verification.js';
 import { runtimeChannels, runtimeDiscordStatus, runtimeGuild, runtimeMode, runtimeRoles, runtimeTransport } from './runtime.js';
 
 export class InputError extends Error {}
@@ -41,7 +42,7 @@ export async function state() {
 }
 export async function simulateSetup(confirmed: boolean) {
   const result = await executeCriar(await runtimeGuild(), STORE_OWNER_ID, confirmed);
-  if (!result.preview) await refreshCatalogs();
+  if (!result.preview) await Promise.all([refreshCatalogs(), refreshVerificationPanel()]);
   return result;
 }
 async function refreshProduct(id: string) {

@@ -8,24 +8,27 @@ datasource db {
 }
 
 model DigitalStore {
-  guildId             String    @id
-  channelsJson        String    @default("{}")
-  paymentInstructions String    @default("Aguarde as instruções da equipe antes de realizar qualquer pagamento.")
-  pixEnabled          Boolean   @default(false)
-  pixKey              String?
-  pixMerchantName     String?
-  pixMerchantCity     String?
-  salesChannelId      String?
-  ordersChannelId     String?
-  spotifyChannelId    String?
-  spotifyMessageId    String?
-  spotifyPublishUntil DateTime?
-  discordChannelId    String?
-  discordMessageId    String?
-  discordPublishUntil DateTime?
-  supportRoleId       String?
-  supportRoleIds      String    @default("[]")
-  setupUntil          DateTime?
+  guildId                  String    @id
+  channelsJson             String    @default("{}")
+  paymentInstructions      String    @default("Aguarde as instruções da equipe antes de realizar qualquer pagamento.")
+  pixEnabled               Boolean   @default(false)
+  pixKey                   String?
+  pixMerchantName          String?
+  pixMerchantCity          String?
+  salesChannelId           String?
+  ordersChannelId          String?
+  spotifyChannelId         String?
+  spotifyMessageId         String?
+  spotifyPublishUntil      DateTime?
+  discordChannelId         String?
+  discordMessageId         String?
+  discordPublishUntil      DateTime?
+  verificationChannelId    String?
+  verificationMessageId    String?
+  verificationPublishUntil DateTime?
+  supportRoleId            String?
+  supportRoleIds           String    @default("[]")
+  setupUntil               DateTime?
 }
 
 model DigitalProduct {
