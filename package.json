@@ -1,0 +1,19 @@
+{
+  "name": "dark-store-local",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Dark Store independente — painel e laboratório local de loja",
+  "scripts": {
+    "dev": "tsx src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "db:generate": "prisma generate",
+    "setup": "node scripts/setup.mjs",
+    "admin:create": "tsx scripts/admin.ts",
+    "test": "node --import tsx --test tests/*.test.mjs"
+  },
+  "engines": { "node": ">=22" },
+  "dependencies": { "@prisma/client": "6.19.3", "discord.js": "14.26.4" },
+  "devDependencies": { "prisma": "6.19.3", "tsx": "4.22.4", "typescript": "5.9.3", "@types/node": "22.19.20" }
+}

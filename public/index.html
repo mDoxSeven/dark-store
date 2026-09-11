@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>dark store · laboratório local</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main id="login" class="login-shell" hidden>
+    <section class="login-card">
+      <img src="/brand/dark.png" alt="dark" class="login-logo">
+      <p class="eyebrow">LABORATÓRIO LOCAL</p>
+      <h1>painel da loja</h1>
+      <p>Esta versão não entra no Discord e não usa credenciais do empty.</p>
+      <form id="login-form">
+        <label>Senha local<input id="password" type="password" autocomplete="current-password" required></label>
+        <button>entrar</button>
+      </form>
+      <p id="login-note" class="note"></p>
+    </section>
+  </main>
+
+  <div id="app" hidden>
+    <header>
+      <div class="brand"><img src="/brand/dark.png" alt="dark"><div><strong>dark store</strong><small>LOCAL CONTROL</small></div></div>
+      <div class="local-pill"><i></i> simulação local</div>
+      <button id="logout" class="ghost">sair</button>
+    </header>
+    <div class="shell">
+      <aside class="sidebar">
+        <p class="eyebrow">CONFIGURAÇÃO</p>
+        <button data-view="overview" class="nav active">visão geral</button>
+        <button data-view="products" class="nav">produtos</button>
+        <button data-view="orders" class="nav">pedidos de teste</button>
+        <button data-view="settings" class="nav">configurações</button>
+        <div class="identity"><small>Aplicação</small><code>1547707174254280794</code><small>Servidor previsto</small><code>1547613908016038032</code></div>
+      </aside>
+      <section class="content">
+        <div id="notice" class="notice" hidden></div>
+
+        <section class="view active" data-page="overview">
+          <div class="hero"><div><p class="eyebrow">DARK STORE</p><h1>estrutura da loja</h1><p>Revise e simule o comando antes de qualquer integração real.</p></div><span>offline-first</span></div>
+          <div class="metrics"><article><small>produtos</small><strong id="metric-products">0</strong></article><article><small>estoque disponível</small><strong id="metric-stock">0</strong></article><article><small>pedidos</small><strong id="metric-orders">0</strong></article><article><small>V2 locais</small><strong id="metric-messages">0</strong></article></div>
+          <article class="card"><div class="card-title"><div><p class="eyebrow">COMANDO /CRIAR</p><h2>estrutura prevista</h2></div><div class="actions"><button id="preview-setup" class="ghost">visualizar</button><button id="confirm-setup">simular criação</button></div></div><p>Não remove canais. A simulação grava apenas IDs fictícios no banco local.</p><div id="layout" class="layout-grid"></div></article>
+        </section>
+
+        <section class="view" data-page="products">
+          <div class="page-title"><div><p class="eyebrow">CATÁLOGO V2</p><h1>produtos e estoque</h1></div><button id="new-product">novo produto</button></div>
+          <div class="product-layout">
+            <article class="card"><div id="product-list" class="product-list"></div></article>
+            <article class="card editor">
+              <form id="product-form">
+                <input id="product-id" type="hidden">
+                <div class="two"><label>Título<input id="title" maxlength="100" required></label><label>Categoria<input id="category" maxlength="60"></label></div>
+                <label>Descrição<textarea id="description" maxlength="2400" rows="5"></textarea></label>
+                <div class="two"><label>Preço em centavos<input id="price" type="number" min="1" max="100000000" step="1" required></label><label>Canal local<select id="channel"><option value="">rascunho sem canal</option></select></label></div>
+                <label>Imagem pública HTTPS<input id="image" type="url" maxlength="2000"></label>
+                <div class="two"><label>Texto do botão<input id="button-label" maxlength="40"></label><label>Cor lateral<input id="accent" type="color"></label></div>
+                <label>Rodapé<input id="footer" maxlength="300"></label>
+                <div class="checks"><label><input id="divider" type="checkbox"> divisória</label><label><input id="active" type="checkbox"> produto ativo</label></div>
+                <button>salvar produto e atualizar V2 local</button>
+              </form>
+              <div id="preview" class="v2-preview"></div>
+              <form id="stock-form">
+                <h3>estoque criptografado</h3><p>Um item por bloco; separe itens com uma linha em branco.</p>
+                <textarea id="stock" rows="7" maxlength="200000" placeholder="conteúdo do item 1&#10;&#10;conteúdo do item 2"></textarea>
+                <button>adicionar ao estoque</button>
+              </form>
+            </article>
+          </div>
+        </section>
+
+        <section class="view" data-page="orders">
+          <div class="page-title"><div><p class="eyebrow">FLUXO DE TESTE</p><h1>pedidos simulados</h1></div><button id="refresh-orders" class="ghost">atualizar</button></div>
+          <article class="card"><form id="order-form" class="inline-form"><label>Produto<select id="order-product"></select></label><label>ID fictício do cliente<input id="order-user" value="100000000000000001" pattern="[0-9]{17,20}"></label><button>criar pedido de teste</button></form><p class="warning">Nenhuma cobrança, DM ou mensagem real é enviada. A confirmação consome estoque no banco de teste; a entrega pode ser baixada localmente.</p></article>
+          <div id="orders"></div>
+        </section>
+
+        <section class="view" data-page="settings">
+          <div class="page-title"><div><p class="eyebrow">AJUSTES LOCAIS</p><h1>configurações</h1></div></div>
+          <article class="card"><form id="settings-form"><label>Instruções de pagamento futuras<textarea id="instructions" maxlength="1000" rows="5"></textarea></label><label>Canal de vendas concluídas<select id="sales-channel"><option value="">não publicar</option></select></label><button>salvar configurações</button></form></article>
+          <article class="card"><h2>limites deste laboratório</h2><ul><li>Servidor escutando apenas em <code>127.0.0.1</code>.</li><li>Login por senha local; sem OAuth do Discord.</li><li>Sem token, registro de comandos, Gateway, pagamentos ou mensagens externas.</li><li>Banco e chave de estoque próprios na pasta <code>data/</code>.</li></ul></article>
+        </section>
+      </section>
+    </div>
+  </div>
+  <script src="/app.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,78 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "sqlite"
+  url = env("DATABASE_URL")
+}
+model DigitalStore {
+  guildId String @id
+  channelsJson String @default("{}")
+  paymentInstructions String @default("Ambiente de testes: nenhum pagamento real.")
+  salesChannelId String?
+  ordersChannelId String?
+  setupUntil DateTime?
+}
+model DigitalProduct {
+  id String @id @default(cuid())
+  guildId String
+  title String
+  description String @default("")
+  category String @default("Geral")
+  priceCents Int
+  imageUrl String @default("")
+  footer String @default("dark store")
+  buttonLabel String @default("Comprar")
+  accentColor String @default("#aeb1b6")
+  divider Boolean @default(true)
+  active Boolean @default(false)
+  channelId String?
+  messageId String?
+  publishUntil DateTime?
+  updatedAt DateTime @updatedAt
+  stock DigitalStock[]
+  orders DigitalOrder[]
+  @@index([guildId])
+}
+model DigitalStock {
+  id String @id @default(cuid())
+  productId String
+  ciphertext String
+  fingerprint String
+  claimedAt DateTime?
+  createdAt DateTime @default(now())
+  product DigitalProduct @relation(fields: [productId], references: [id])
+  order DigitalOrder?
+  @@index([productId, claimedAt])
+  @@unique([productId, fingerprint])
+}
+model DigitalOrder {
+  id String @id @default(cuid())
+  guildId String
+  productId String
+  userId String
+  interactionId String @unique
+  activeKey String? @unique
+  productTitle String
+  priceCents Int
+  status String @default("pending")
+  stockId String? @unique
+  deliveryMessageId String?
+  salesMessageId String?
+  approvedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  product DigitalProduct @relation(fields: [productId], references: [id])
+  stock DigitalStock? @relation(fields: [stockId], references: [id])
+  @@index([guildId, status])
+}
+model WebSession {
+  hash String @id
+  expires DateTime
+  createdAt DateTime @default(now())
+}
+model LocalMessage {
+  id String @id
+  channelId String
+  body String
+}
