@@ -13,6 +13,8 @@ Aplicação Discord e painel privado independentes do empty.
 - catálogo e estoque criptografado em SQLite próprio;
 - pedidos com aprovação manual e entrega privada em arquivo;
 - cobrança Pix estática por pedido, com valor exato, txid, copia e cola e QR Code privado;
+- canal `spotify` com catálogo V2 automático para itens digitais autorizados cadastrados nessa categoria;
+- ticket privado com confirmação, recusa com exclusão automática e botão para notificar o atendimento;
 - editor completo de Components V2 com Markdown, galeria, thumbnail, divisores e anexos;
 - botões V2 de link ou cargo, com adicionar, remover ou alternar;
 - anti-raid para rajadas de entrada, contas novas e ações destrutivas no Audit Log;
@@ -66,6 +68,12 @@ Resultado esperado:
 ```
 
 No Discord, execute `/criar` primeiro sem confirmação para ver a prévia e depois com `confirmar: Sim`. O comando não remove canais existentes e mantém os IDs criados no banco.
+
+## Catálogo Spotify
+
+O `/criar` adiciona o canal `spotify` e a categoria privada de atendimentos. No painel, cadastre um produto ativo com a categoria exatamente `spotify` e adicione estoque; o seletor V2 do canal é atualizado automaticamente. Ao escolher um item, o cliente recebe um ticket privado para confirmar ou recusar. A recusa agenda a exclusão do canal; a confirmação gera o Pix e libera a visualização privada do QR Code.
+
+Em `configurações`, escolha o cargo de atendimento usado por **Notificar administrador**. Sem um cargo configurado, o botão notifica o responsável da loja. Use o catálogo somente para códigos, gift cards, assinaturas e outros itens que você esteja autorizado a comercializar; o sistema não deve ser usado para transferir contas ou credenciais de terceiros.
 
 ## Pagamento Pix
 

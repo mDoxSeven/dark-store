@@ -14,6 +14,8 @@ import { AntiRaidEngine, validateAntiRaid } from '../src/antiRaid.ts';
 import { AuditLogEvent } from 'discord.js';
 import { auditActionName, parseRoleButton } from '../src/discord/ids.ts';
 import { buildPixPayload, crc16, pixQrPng, validatePixSettings } from '../src/store/pix.ts';
+import { SPOTIFY_SELECT_ID, spotifyCatalogMessage } from '../src/store/spotifyMessage.ts';
+import { confirmationTicketMessage, parseTicketButton, paymentTicketMessage, ticketButtonId } from '../src/store/tickets.ts';
 
 const root = resolve(import.meta.dirname, '..');
 const product = { title: 'item teste', description: 'conteúdo de teste', category: 'geral', priceCents: 1000, imageUrl: '', footer: 'dark store', buttonLabel: 'comprar', accentColor: '#aeb1b6', divider: true, active: true };
@@ -23,8 +25,30 @@ test('identidade independente e estrutura prevista são fixas', () => {
   assert.equal(STORE_GUILD_ID, '1547613908016038032');
   assert.equal(MODE, 'local-simulation');
   assert.equal(STORE_LAYOUT.flatMap(g => g.channels).filter(c => c.type === 2).length, 2);
+  assert.ok(STORE_LAYOUT.flatMap(g => g.channels).some(c => c.name === 'spotify'));
+  assert.ok(STORE_LAYOUT.some(g => g.key === 'tickets' && 'private' in g));
   assert.doesNotThrow(() => assertStoreOwner(STORE_GUILD_ID, '1002774556269891694'));
   assert.throws(() => assertStoreOwner('outro', '1002774556269891694'));
+});
+
+test('catálogo Spotify e ticket usam Components V2 e botões cinza', () => {
+  const products = Array.from({ length: 30 }, (_, index) => ({ id: `produto${index}`, title: `Item ${index}`, description: '', priceCents: 1990, stock: index === 0 ? 0 : 2 }));
+  const catalog = spotifyCatalogMessage(products);
+  assert.equal(catalog.flags, 32768);
+  const select = catalog.components[0].components.find(component => component.type === 1).components[0];
+  assert.equal(select.custom_id, SPOTIFY_SELECT_ID);
+  assert.equal(select.options.length, 25);
+  assert.ok(select.options.every(option => option.value !== 'produto0'));
+  const id = ticketButtonId('confirm', 'ticket_123456');
+  assert.deepEqual(parseTicketButton(id), { action: 'confirm', ticketId: 'ticket_123456' });
+  assert.equal(parseTicketButton('store:ticket:admin:ticket_123456'), null);
+  const ticket = { id: 'ticket_123456', userId: '100000000000000001', productTitle: 'Gift card autorizado', priceCents: 1990 };
+  const confirmation = confirmationTicketMessage(ticket);
+  const buttons = confirmation.components[0].components.find(component => component.type === 1).components;
+  assert.ok(buttons.every(button => button.style === 2));
+  assert.ok(buttons.some(button => button.custom_id.includes(':notify:')));
+  const payment = paymentTicketMessage(ticket, { id: 'order_123', pixPayload: '000201PIX' });
+  assert.ok(payment.components[0].components.find(component => component.type === 10).content.includes('000201PIX'));
 });
 
 test('produto V2 é validado e estoque criptografado é autenticado', () => {

@@ -55,7 +55,7 @@
             <article class="card editor">
               <form id="product-form">
                 <input id="product-id" type="hidden">
-                <div class="two"><label>Título<input id="title" maxlength="100" required></label><label>Categoria<input id="category" maxlength="60"></label></div>
+                <div class="two"><label>Título<input id="title" maxlength="100" required></label><label>Categoria<input id="category" maxlength="60"><small>Use <code>spotify</code> para publicar automaticamente no seletor do canal Spotify.</small></label></div>
                 <label>Descrição<textarea id="description" maxlength="2400" rows="5"></textarea></label>
                 <div class="two"><label>Preço em centavos<input id="price" type="number" min="1" max="100000000" step="1" required></label><label>Canal de publicação<select id="channel"><option value="">rascunho sem canal</option></select></label></div>
                 <label>Imagem pública HTTPS<input id="image" type="url" maxlength="2000"></label>
@@ -130,6 +130,7 @@
             <label>Chave Pix<input id="pix-key" maxlength="77" autocomplete="off" placeholder="CPF, CNPJ, e-mail, telefone ou chave aleatória"></label>
             <div class="two"><label>Nome do recebedor<input id="pix-name" maxlength="25" placeholder="como registrado no Pix"></label><label>Cidade<input id="pix-city" maxlength="15" placeholder="SAO PAULO"></label></div>
             <label>Instruções adicionais<textarea id="instructions" maxlength="1000" rows="4"></textarea></label>
+            <label>Cargo de atendimento<select id="support-role"><option value="">dono do servidor</option></select><small>Será marcado pelo botão “Notificar administrador” dentro dos tickets.</small></label>
             <label>Canal de vendas concluídas<select id="sales-channel"><option value="">não publicar</option></select></label>
             <button>salvar configurações</button>
           </form></article>

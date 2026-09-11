@@ -17,30 +17,55 @@ model DigitalStore {
   pixMerchantCity     String?
   salesChannelId      String?
   ordersChannelId     String?
+  spotifyChannelId    String?
+  spotifyMessageId    String?
+  spotifyPublishUntil DateTime?
+  supportRoleId       String?
   setupUntil          DateTime?
 }
 
 model DigitalProduct {
-  id           String         @id @default(cuid())
+  id           String           @id @default(cuid())
   guildId      String
   title        String
-  description  String         @default("")
-  category     String         @default("Geral")
+  description  String           @default("")
+  category     String           @default("Geral")
   priceCents   Int
-  imageUrl     String         @default("")
-  footer       String         @default("dark store")
-  buttonLabel  String         @default("Comprar")
-  accentColor  String         @default("#aeb1b6")
-  divider      Boolean        @default(true)
-  active       Boolean        @default(false)
+  imageUrl     String           @default("")
+  footer       String           @default("dark store")
+  buttonLabel  String           @default("Comprar")
+  accentColor  String           @default("#aeb1b6")
+  divider      Boolean          @default(true)
+  active       Boolean          @default(false)
   channelId    String?
   messageId    String?
   publishUntil DateTime?
-  updatedAt    DateTime       @updatedAt
+  updatedAt    DateTime         @updatedAt
   stock        DigitalStock[]
   orders       DigitalOrder[]
+  tickets      CheckoutTicket[]
 
   @@index([guildId])
+}
+
+model CheckoutTicket {
+  id           String         @id @default(cuid())
+  guildId      String
+  userId       String
+  productId    String
+  productTitle String
+  priceCents   Int
+  channelId    String         @unique
+  activeKey    String?        @unique
+  status       String         @default("awaiting_confirmation")
+  orderId      String?        @unique
+  deleteAt     DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  product      DigitalProduct @relation(fields: [productId], references: [id])
+
+  @@index([guildId, userId, status])
+  @@index([deleteAt])
 }
 
 model DigitalStock {

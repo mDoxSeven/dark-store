@@ -11,6 +11,7 @@ import { sealStock, unsealStock, storeKey, stockFingerprint } from './store/cryp
 import { buildV2Message, validateV2Panel, type V2PanelInput } from './v2.js';
 import { AntiRaidEngine, respondToRaid, validateAntiRaid, type AntiRaidSettings } from './antiRaid.js';
 import { pixQrPng, validatePixSettings } from './store/pix.js';
+import { refreshSpotifyCatalog } from './store/spotify.js';
 import { runtimeChannels, runtimeDiscordStatus, runtimeGuild, runtimeMode, runtimeRoles, runtimeTransport } from './runtime.js';
 
 export class InputError extends Error {}
@@ -36,7 +37,9 @@ export async function state() {
     antiRaid: antiRaid ? { ...antiRaid, quarantineRoleId: antiRaid.quarantineRoleId || '', logChannelId: antiRaid.logChannelId || '', trustedUserIds: JSON.parse(antiRaid.trustedUserIds) } : defaultAntiRaid(), incidents };
 }
 export async function simulateSetup(confirmed: boolean) {
-  return executeCriar(await runtimeGuild(), STORE_OWNER_ID, confirmed);
+  const result = await executeCriar(await runtimeGuild(), STORE_OWNER_ID, confirmed);
+  if (!result.preview) await refreshSpotifyCatalog();
+  return result;
 }
 async function refreshProduct(id: string) {
   const lock = await prisma.digitalProduct.updateMany({ where: { id, OR: [{ publishUntil: null }, { publishUntil: { lt: new Date() } }] }, data: { publishUntil: new Date(Date.now() + 60_000) } });
@@ -61,7 +64,7 @@ export async function saveProduct(body: Record<string, unknown>) {
   } else if (await prisma.digitalProduct.count() >= 200) throw new InputError('Limite desta versão: 200 produtos.');
   const p = id ? await prisma.digitalProduct.update({ where: { id }, data: { ...data, channelId } })
     : await prisma.digitalProduct.create({ data: { ...data, guildId: STORE_GUILD_ID, channelId } });
-  try { await refreshProduct(p.id); }
+  try { await Promise.all([refreshProduct(p.id), refreshSpotifyCatalog()]); }
   catch { return { id: p.id, message: 'Produto salvo, mas a publicação não foi atualizada. Não recadastre; verifique o canal e tente salvar novamente.' }; }
   return { id: p.id, message: runtimeMode() === 'discord-live' ? 'Produto salvo e publicação atualizada no Discord.' : 'Produto salvo. Publicação local atualizada.' };
 }
@@ -82,7 +85,7 @@ export async function addStock(body: Record<string, unknown>) {
     }
     return added;
   }, { timeout: 15_000 });
-  try { await refreshProduct(id); } catch { return { message: `${count} itens salvos. Salve o produto para atualizar sua prévia.` }; }
+  try { await Promise.all([refreshProduct(id), refreshSpotifyCatalog()]); } catch { return { message: `${count} itens salvos. Salve o produto para atualizar sua prévia.` }; }
   return { message: `${count} itens adicionados; duplicados ignorados.` };
 }
 export async function simulateOrder(body: Record<string, unknown>) {
@@ -100,18 +103,25 @@ export async function processOrder(body: Record<string, unknown>) {
     else if (body.operation === 'approve' || body.operation === 'retry') {
       await approveOrder(prisma, STORE_OWNER_ID, id, runtimeTransport(body.failDM === true), await storeKey(), body.operation === 'retry');
     } else throw new InputError('Operação inválida.');
-  } finally { await refreshProduct(order.productId).catch(() => {}); }
+  } finally { await Promise.allSettled([refreshProduct(order.productId), refreshSpotifyCatalog()]); }
+  const current = await prisma.digitalOrder.findUnique({ where: { id } });
+  if (current?.status === 'delivered' || current?.status === 'cancelled') {
+    await prisma.checkoutTicket.updateMany({ where: { orderId: id }, data: { status: current.status, activeKey: null } });
+  }
   return { message: runtimeMode() === 'discord-live' ? 'Ação registrada no pedido.' : 'Simulação registrada. Nenhum pagamento, mensagem ou entrega real.' };
 }
 export async function saveSettings(body: Record<string, unknown>) {
   if (typeof body.paymentInstructions !== 'string' || body.paymentInstructions.length > 1000) throw new InputError('Instruções: até 1000 caracteres.');
   const salesChannelId = typeof body.salesChannelId === 'string' && body.salesChannelId ? body.salesChannelId : null;
+  const supportRoleId = typeof body.supportRoleId === 'string' && body.supportRoleId ? body.supportRoleId : null;
   if (salesChannelId) await runtimeTransport().checkChannel(salesChannelId);
+  if (supportRoleId && !/^\d{17,20}$/.test(supportRoleId)) throw new InputError('Selecione um cargo de atendimento válido.');
+  if (supportRoleId && !(await runtimeRoles()).some(role => role.id === supportRoleId)) throw new InputError('O cargo de atendimento não está disponível no servidor.');
   let pix;
   try {
     pix = validatePixSettings({ enabled: body.pixEnabled === true, key: String(body.pixKey || ''), merchantName: String(body.pixMerchantName || ''), merchantCity: String(body.pixMerchantCity || '') });
   } catch (error) { throw new InputError(error instanceof Error ? error.message : 'Configuração Pix inválida.'); }
-  const data = { paymentInstructions: body.paymentInstructions, salesChannelId, pixEnabled: pix.enabled, pixKey: pix.key || null, pixMerchantName: pix.merchantName || null, pixMerchantCity: pix.merchantCity || null };
+  const data = { paymentInstructions: body.paymentInstructions, salesChannelId, supportRoleId, pixEnabled: pix.enabled, pixKey: pix.key || null, pixMerchantName: pix.merchantName || null, pixMerchantCity: pix.merchantCity || null };
   await prisma.digitalStore.upsert({ where: { guildId: STORE_GUILD_ID }, create: { guildId: STORE_GUILD_ID, ...data }, update: data });
   return { message: runtimeMode() === 'discord-live' ? 'Configurações salvas para o servidor.' : 'Configurações locais salvas.' };
 }

@@ -1,6 +1,7 @@
 import {
-  ActivityType, Client, Events, GatewayIntentBits, MessageFlags,
-  PermissionFlagsBits, type ButtonInteraction, type ChatInputCommandInteraction, type Guild
+  ActivityType, ChannelType, Client, Events, GatewayIntentBits, MessageFlags, OverwriteType,
+  PermissionFlagsBits, type ButtonInteraction, type ChatInputCommandInteraction, type Guild,
+  type MessageCreateOptions, type MessageEditOptions, type StringSelectMenuInteraction
 } from 'discord.js';
 import { prisma } from '../lib/db.js';
 import { AntiRaidEngine, respondToRaid, type AntiRaidResponder } from '../antiRaid.js';
@@ -12,6 +13,9 @@ import { getAntiRaidSettings } from '../service.js';
 import { discordRuntime } from './transport.js';
 import { auditActionName, parseRoleButton } from './ids.js';
 import { pixQrPng } from '../store/pix.js';
+import { refreshSpotifyCatalog } from '../store/spotify.js';
+import { SPOTIFY_SELECT_ID } from '../store/spotifyMessage.js';
+import { confirmationTicketMessage, parseTicketButton, paymentTicketMessage } from '../store/tickets.js';
 const errorText = (error: unknown) => error instanceof Error ? error.message.slice(0, 1500) : 'Ação não concluída.';
 
 async function handleCriar(interaction: ChatInputCommandInteraction) {
@@ -21,11 +25,124 @@ async function handleCriar(interaction: ChatInputCommandInteraction) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const confirmed = interaction.options.getBoolean('confirmar') === true;
   const result = await executeCriar(interaction.guild, interaction.user.id, confirmed);
+  if (!result.preview) await refreshSpotifyCatalog();
   if (result.preview) {
     const count = result.layout.reduce((total, group) => total + group.channels.length, 0);
     await interaction.editReply(`Prévia pronta: ${result.layout.length} categorias e ${count} canais. Execute novamente marcando **confirmar: Sim**.`);
   } else {
     await interaction.editReply(result.created.length ? `Estrutura pronta. Criados: ${result.created.join(', ')}.` : 'A estrutura já estava pronta; nenhum canal foi duplicado.');
+  }
+}
+
+async function handleSpotifySelection(interaction: StringSelectMenuInteraction) {
+  if (interaction.guildId !== STORE_GUILD_ID || !interaction.guild) throw new Error('Catálogo fora do servidor autorizado.');
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const productId = interaction.values[0];
+  if (!productId || productId === 'unavailable') throw new Error('Este item não está disponível.');
+  const product = await prisma.digitalProduct.findFirst({ where: { id: productId, guildId: STORE_GUILD_ID, active: true } });
+  if (!product || !await prisma.digitalStock.count({ where: { productId, claimedAt: null } })) throw new Error('Produto indisponível ou sem estoque.');
+  const existing = await prisma.checkoutTicket.findFirst({ where: { guildId: STORE_GUILD_ID, userId: interaction.user.id, status: { in: ['awaiting_confirmation', 'awaiting_payment'] } } });
+  if (existing) {
+    const existingChannel = await interaction.guild.channels.fetch(existing.channelId).catch(() => null);
+    if (existingChannel) {
+      await interaction.editReply(`Você já possui um atendimento aberto: <#${existing.channelId}>.`);
+      return;
+    }
+    await prisma.checkoutTicket.update({ where: { id: existing.id }, data: { status: 'closed', activeKey: null } });
+  }
+  const settings = await prisma.digitalStore.findUnique({ where: { guildId: STORE_GUILD_ID } });
+  const ids = JSON.parse(settings?.channelsJson || '{}') as Record<string, string>;
+  const overwrites = [
+    { id: interaction.guild.id, type: OverwriteType.Role, deny: [PermissionFlagsBits.ViewChannel] },
+    { id: interaction.user.id, type: OverwriteType.Member, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+    { id: interaction.client.user.id, type: OverwriteType.Member, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ManageChannels] },
+    { id: STORE_OWNER_ID, type: OverwriteType.Member, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+  ];
+  if (settings?.supportRoleId) {
+    const role = await interaction.guild.roles.fetch(settings.supportRoleId).catch(() => null);
+    if (role) overwrites.push({ id: role.id, type: OverwriteType.Role, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] });
+  }
+  const safeName = interaction.user.username.toLocaleLowerCase('pt-BR').replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').slice(0, 28) || 'cliente';
+  const channel = await interaction.guild.channels.create({
+    name: `spotify-${safeName}-${interaction.user.id.slice(-4)}`,
+    type: ChannelType.GuildText,
+    parent: ids.tickets || null,
+    permissionOverwrites: overwrites,
+    topic: `Atendimento privado · ${product.title} · ${interaction.user.id}`,
+    reason: 'Seleção no catálogo Spotify da dark store',
+  });
+  try {
+    const ticket = await prisma.checkoutTicket.create({ data: {
+      guildId: STORE_GUILD_ID, userId: interaction.user.id, productId: product.id,
+      productTitle: product.title, priceCents: product.priceCents, channelId: channel.id,
+      activeKey: `${STORE_GUILD_ID}:${interaction.user.id}`,
+    } });
+    await channel.send({ ...confirmationTicketMessage(ticket), allowedMentions: { users: [ticket.userId] } } as MessageCreateOptions);
+    await interaction.editReply(`Atendimento criado: <#${channel.id}>.`);
+  } catch (error) {
+    await channel.delete('Falha ao registrar atendimento').catch(() => {});
+    throw error;
+  }
+}
+
+async function handleTicketButton(interaction: ButtonInteraction, parsed: NonNullable<ReturnType<typeof parseTicketButton>>, notifyCooldowns: Map<string, number>) {
+  if (interaction.guildId !== STORE_GUILD_ID || !interaction.guild) throw new Error('Atendimento fora do servidor autorizado.');
+  const ticket = await prisma.checkoutTicket.findFirst({ where: { id: parsed.ticketId, guildId: STORE_GUILD_ID } });
+  if (!ticket) throw new Error('Atendimento não encontrado.');
+  if (ticket.userId !== interaction.user.id && interaction.user.id !== STORE_OWNER_ID) throw new Error('Somente o cliente deste atendimento pode usar esse botão.');
+  if (ticket.channelId !== interaction.channelId) throw new Error('Este botão não pertence a este atendimento.');
+  const ticketChannel = interaction.channel;
+  if (!ticketChannel?.isSendable()) throw new Error('Canal do atendimento indisponível.');
+
+  if (parsed.action === 'confirm') {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    if (ticket.status === 'awaiting_payment' && ticket.orderId) {
+      const existingOrder = await prisma.digitalOrder.findUnique({ where: { id: ticket.orderId } });
+      if (!existingOrder) throw new Error('Pedido vinculado não encontrado.');
+      await interaction.message.edit({ components: paymentTicketMessage(ticket, existingOrder).components } as MessageEditOptions);
+      await interaction.editReply('Os dados do pagamento foram restaurados no atendimento.');
+      return;
+    }
+    if (ticket.status !== 'awaiting_confirmation') throw new Error('Este atendimento já foi processado.');
+    const order = await createOrder(prisma, ticket.productId, ticket.userId, interaction.id);
+    const changed = await prisma.checkoutTicket.updateMany({ where: { id: ticket.id, status: 'awaiting_confirmation' }, data: { status: 'awaiting_payment', orderId: order.id } });
+    if (!changed.count) throw new Error('Este atendimento já foi processado.');
+    await interaction.message.edit({ components: paymentTicketMessage(ticket, order).components } as MessageEditOptions);
+    await interaction.editReply(order.pixPayload ? 'Pix gerado. Use o código exibido no atendimento ou abra o QR Code.' : 'Pedido confirmado. Aguarde as instruções da equipe.');
+    return;
+  }
+  if (parsed.action === 'refuse') {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const changed = await prisma.checkoutTicket.updateMany({ where: { id: ticket.id, status: 'awaiting_confirmation' }, data: { status: 'refused', activeKey: null, deleteAt: new Date(Date.now() + 8_000) } });
+    if (!changed.count) throw new Error('Este atendimento já foi processado.');
+    await ticketChannel.send('Compra recusada. Este canal será removido em alguns segundos.');
+    await interaction.editReply('Compra recusada e fechamento agendado.');
+    return;
+  }
+  if (parsed.action === 'qr') {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const order = ticket.orderId ? await prisma.digitalOrder.findUnique({ where: { id: ticket.orderId } }) : null;
+    if (!order?.pixPayload) throw new Error('Este pedido não possui QR Code Pix.');
+    await interaction.editReply({ content: `QR Code do pedido \`${order.id}\`.`, files: [{ attachment: await pixQrPng(order.pixPayload), name: `pix-${order.id}.png` }] });
+    return;
+  }
+  const now = Date.now();
+  if ((notifyCooldowns.get(ticket.id) || 0) > now) throw new Error('O administrador já foi notificado. Aguarde dois minutos.');
+  notifyCooldowns.set(ticket.id, now + 120_000);
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const settings = await prisma.digitalStore.findUnique({ where: { guildId: STORE_GUILD_ID } });
+  const supportRole = settings?.supportRoleId ? await interaction.guild.roles.fetch(settings.supportRoleId).catch(() => null) : null;
+  const mention = supportRole ? `<@&${supportRole.id}>` : `<@${STORE_OWNER_ID}>`;
+  await ticketChannel.send({ content: `${mention}, <@${ticket.userId}> solicitou atendimento neste ticket.`, allowedMentions: supportRole ? { roles: [supportRole.id], users: [ticket.userId] } : { users: [STORE_OWNER_ID, ticket.userId] } });
+  await interaction.editReply('Administrador notificado.');
+}
+
+async function sweepClosedTickets(client: Client) {
+  const due = await prisma.checkoutTicket.findMany({ where: { guildId: STORE_GUILD_ID, deleteAt: { lte: new Date() } }, take: 20 });
+  for (const ticket of due) {
+    const channel = await client.channels.fetch(ticket.channelId).catch(() => null);
+    if (channel && 'delete' in channel) await channel.delete('Atendimento recusado pelo cliente').catch(() => {});
+    await prisma.checkoutTicket.update({ where: { id: ticket.id }, data: { status: 'closed', activeKey: null, deleteAt: null } });
   }
 }
 
@@ -86,6 +203,7 @@ function responder(guild: Guild): AntiRaidResponder {
 export async function startDiscord(token: string) {
   const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildModeration] });
   const raid = new AntiRaidEngine();
+  const notifyCooldowns = new Map<string, number>();
   const responseCooldowns = new Map<string, number>();
   const claimResponse = (key: string, duration: number) => {
     const now = Date.now();
@@ -100,9 +218,12 @@ export async function startDiscord(token: string) {
   client.on(Events.InteractionCreate, interaction => {
     void (async () => {
       if (interaction.isChatInputCommand() && interaction.commandName === 'criar') await handleCriar(interaction);
+      else if (interaction.isStringSelectMenu() && interaction.customId === SPOTIFY_SELECT_ID) await handleSpotifySelection(interaction);
       else if (interaction.isButton()) {
         const role = parseRoleButton(interaction.customId);
+        const ticket = parseTicketButton(interaction.customId);
         if (role) await handleRoleButton(interaction, role);
+        else if (ticket) await handleTicketButton(interaction, ticket, notifyCooldowns);
         else if (interaction.customId.startsWith('store:buy:')) await handlePurchase(interaction);
       }
     })().catch(async error => {
@@ -151,6 +272,8 @@ export async function startDiscord(token: string) {
         await guild.commands.set([criarCommand.toJSON()]);
         connected.user.setPresence({ status: 'online', activities: [{ name: 'a dark store', type: ActivityType.Watching }] });
         configureDiscordRuntime(discordRuntime(connected, guild));
+        await sweepClosedTickets(connected);
+        setInterval(() => void sweepClosedTickets(connected).catch(error => console.error(`tickets: ${errorText(error)}`)), 15_000).unref();
         console.log(`Discord conectado como ${connected.user.tag}; /criar registrado no servidor autorizado.`);
         resolveReady(connected);
       } catch (error) { connected.destroy(); reject(error); }

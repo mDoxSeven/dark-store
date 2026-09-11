@@ -24,6 +24,7 @@ export const STORE_LAYOUT = [
   { key: "sales", name: "COMPRAS • CATÁLOGO", channels: [
     { key: "shop", name: "compre-aqui", type: 0, readOnly: true },
     { key: "accounts", name: "contas", type: 0, readOnly: true },
+    { key: "spotify", name: "spotify", type: 0, readOnly: true },
     { key: "completed", name: "vendas-realizadas", type: 0, readOnly: true },
     { key: "reviews", name: "avaliacoes", type: 0, readOnly: false },
   ] },
@@ -33,6 +34,7 @@ export const STORE_LAYOUT = [
     { key: "supportVoice", name: "Suporte", type: 2, readOnly: false },
     { key: "memberVoice", name: "Convivência", type: 2, readOnly: false },
   ] },
+  { key: "tickets", name: "ATENDIMENTO • PEDIDOS", private: true, channels: [] },
   { key: "staff", name: "EQUIPE • PRIVADO", private: true, channels: [
     { key: "orders", name: "pedidos", type: 0, readOnly: false },
     { key: "logs", name: "registro-loja", type: 0, readOnly: false },
