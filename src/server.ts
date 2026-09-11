@@ -20,6 +20,11 @@ async function body(req: IncomingMessage) {
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new service.InputError('JSON inválido.');
   return parsed as Record<string, unknown>;
 }
+async function rawBody(req: IncomingMessage, limit: number) {
+  let size = 0; const chunks: Buffer[] = [];
+  for await (const chunk of req) { size += chunk.length; if (size > limit) throw new service.InputError('Arquivo muito grande.'); chunks.push(chunk); }
+  return Buffer.concat(chunks);
+}
 function json(res: ServerResponse, code: number, value: unknown) { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(value)); }
 export function makeServer() {
   const limiter = new LoginLimiter();
@@ -57,6 +62,15 @@ export function makeServer() {
           const payload = await service.delivery(path.slice(14));
           res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Content-Disposition': 'attachment; filename="entrega-simulada.txt"' }); res.end(payload); return;
         }
+        if (path.startsWith('/api/assets/') && method === 'GET') {
+          const asset = await service.getAsset(path.slice(12));
+          res.writeHead(200, { 'Content-Type': asset.mime, 'Content-Length': asset.size, 'Content-Disposition': `inline; filename="${asset.filename.replace(/["\\]/g, '-') }"` }); res.end(asset.data); return;
+        }
+        if (path === '/api/assets' && method === 'POST') {
+          const mime = req.headers['content-type']?.split(';')[0] || '';
+          const filename = decodeURIComponent(String(req.headers['x-file-name'] || 'image'));
+          json(res, 200, await service.saveAsset(filename, mime, await rawBody(req, 7 * 1024 * 1024))); return;
+        }
         if (method === 'POST') {
           const input = await body(req);
           let result;
@@ -67,6 +81,10 @@ export function makeServer() {
             case '/api/orders': result = await service.simulateOrder(input); break;
             case '/api/order-action': result = await service.processOrder(input); break;
             case '/api/settings': result = await service.saveSettings(input); break;
+            case '/api/v2-panels': result = await service.saveV2Panel(input); break;
+            case '/api/v2-remove': result = await service.removeV2Panel(String(input.id || '')); break;
+            case '/api/anti-raid': result = await service.saveAntiRaid(input); break;
+            case '/api/anti-raid/simulate': result = await service.simulateRaid(input); break;
             default: json(res, 404, { error: 'Rota não encontrada.' }); return;
           }
           json(res, 200, result); return;
@@ -75,7 +93,7 @@ export function makeServer() {
       }
       const assets: Record<string, [string, string]> = {
         '/': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
-        '/styles.css': ['styles.css', 'text/css; charset=utf-8'], '/brand/dark.png': ['dark.png', 'image/png']
+        '/styles.css': ['styles.css', 'text/css; charset=utf-8'], '/modules.css': ['modules.css', 'text/css; charset=utf-8'], '/brand/dark.png': ['dark.png', 'image/png']
       };
       if (method !== 'GET' || !assets[path]) { json(res, 404, { error: 'Rota não encontrada.' }); return; }
       const [file, type] = assets[path];

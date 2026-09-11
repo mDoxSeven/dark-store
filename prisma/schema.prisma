@@ -76,3 +76,71 @@ model LocalMessage {
   channelId String
   body String
 }
+model ManagedV2Panel {
+  id String @id @default(cuid())
+  guildId String
+  name String
+  channelId String?
+  messageId String? @unique
+  title String?
+  description String?
+  color String @default("#aeb1b6")
+  imageUrl String?
+  assetId String?
+  thumbnailUrl String?
+  footer String?
+  imagePosition String @default("bottom")
+  showDivider Boolean @default(true)
+  spacing String @default("small")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  buttons ManagedV2Button[]
+  @@index([guildId])
+}
+model ManagedV2Button {
+  id String @id @default(cuid())
+  panelId String
+  label String
+  type String @default("LINK")
+  url String?
+  roleId String?
+  roleMode String @default("ADD")
+  style String @default("SECONDARY")
+  emoji String?
+  position Int @default(0)
+  panel ManagedV2Panel @relation(fields: [panelId], references: [id], onDelete: Cascade)
+  @@index([panelId, position])
+}
+model MediaAsset {
+  id String @id @default(cuid())
+  filename String
+  mime String
+  size Int
+  createdAt DateTime @default(now())
+}
+model AntiRaidConfig {
+  guildId String @id
+  enabled Boolean @default(false)
+  joinLimit Int @default(8)
+  joinWindowSeconds Int @default(10)
+  minAccountAgeHours Int @default(24)
+  destructiveLimit Int @default(3)
+  destructiveWindowSeconds Int @default(15)
+  action String @default("QUARANTINE")
+  quarantineRoleId String?
+  logChannelId String?
+  trustedUserIds String @default("[]")
+  updatedAt DateTime @updatedAt
+}
+model SecurityIncident {
+  id String @id @default(cuid())
+  guildId String
+  kind String
+  actorId String?
+  targetId String?
+  action String
+  status String
+  details String
+  createdAt DateTime @default(now())
+  @@index([guildId, createdAt])
+}

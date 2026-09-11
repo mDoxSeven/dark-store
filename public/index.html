@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>dark store · laboratório local</title>
   <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/modules.css">
 </head>
 <body>
   <main id="login" class="login-shell" hidden>
@@ -32,6 +33,8 @@
         <p class="eyebrow">CONFIGURAÇÃO</p>
         <button data-view="overview" class="nav active">visão geral</button>
         <button data-view="products" class="nav">produtos</button>
+        <button data-view="v2" class="nav">editor V2</button>
+        <button data-view="security" class="nav">anti-raid</button>
         <button data-view="orders" class="nav">pedidos de teste</button>
         <button data-view="settings" class="nav">configurações</button>
         <div class="identity"><small>Aplicação</small><code>1547707174254280794</code><small>Servidor previsto</small><code>1547613908016038032</code></div>
@@ -69,6 +72,49 @@
               </form>
             </article>
           </div>
+        </section>
+
+        <section class="view" data-page="v2">
+          <div class="page-title"><div><p class="eyebrow">COMPONENTS V2</p><h1>editor completo</h1></div><button id="new-v2">novo painel</button></div>
+          <div class="product-layout v2-layout">
+            <article class="card"><div id="v2-list" class="product-list"></div></article>
+            <article class="card editor">
+              <form id="v2-form">
+                <input id="v2-id" type="hidden"><input id="v2-asset" type="hidden">
+                <div class="two"><label>Nome interno<input id="v2-name" maxlength="60" required></label><label>Canal local<select id="v2-channel" required><option value="">selecione</option></select></label></div>
+                <label>Título do Text Display<input id="v2-title" maxlength="200"></label>
+                <label>Conteúdo Markdown<textarea id="v2-description" maxlength="3700" rows="8"></textarea><small id="v2-count">0/3700</small></label>
+                <div class="two"><label>Cor lateral<input id="v2-color" type="color"></label><label>Rodapé<input id="v2-footer" maxlength="500"></label></div>
+                <div class="two"><label>Posição da galeria<select id="v2-position"><option value="top">acima do texto</option><option value="bottom">abaixo do texto</option></select></label><label>Espaçamento<select id="v2-spacing"><option value="small">compacto</option><option value="large">amplo</option></select></label></div>
+                <label>Media Gallery por URL HTTPS<input id="v2-image" type="url" maxlength="2000"></label>
+                <label class="upload">Anexar imagem local · PNG, JPEG, WEBP ou GIF até 7 MB<input id="v2-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif"></label>
+                <div class="upload-status"><small id="v2-file-note">nenhum anexo local</small><button id="clear-v2-file" type="button" class="ghost">remover anexo local</button></div>
+                <label>Thumbnail da Section por URL HTTPS<input id="v2-thumb" type="url" maxlength="2000"></label>
+                <label class="check"><input id="v2-divider" type="checkbox"> exibir separadores</label>
+                <div class="button-editor-head"><div><strong>botões interativos</strong><small>links ou cargos · até cinco</small></div><button id="add-v2-button" type="button" class="ghost">adicionar botão</button></div>
+                <div id="v2-buttons" class="button-editor"></div>
+                <div class="actions"><button id="remove-v2" type="button" class="danger" hidden>excluir painel</button><button>salvar e sincronizar V2 local</button></div>
+              </form>
+              <div id="v2-preview" class="discord-preview"></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="view" data-page="security">
+          <div class="page-title"><div><p class="eyebrow">PROTEÇÃO</p><h1>anti-raid</h1></div><span class="local-pill"><i></i> motor local</span></div>
+          <div class="security-grid">
+            <article class="card"><form id="raid-form">
+              <label class="switch"><input id="raid-enabled" type="checkbox"> ativar proteção quando houver integração</label>
+              <h3>Entrada em massa</h3><div class="three"><label>Entradas para disparar<input id="raid-join-limit" type="number" min="3" max="100"></label><label>Janela em segundos<input id="raid-join-window" type="number" min="5" max="300"></label><label>Idade mínima da conta (horas)<input id="raid-age" type="number" min="0" max="8760"></label></div>
+              <h3>Ações destrutivas</h3><div class="two"><label>Ações para disparar<input id="raid-destroy-limit" type="number" min="2" max="20"></label><label>Janela em segundos<input id="raid-destroy-window" type="number" min="5" max="300"></label></div>
+              <div class="two"><label>Resposta<select id="raid-action"><option value="QUARANTINE">quarentena</option><option value="KICK">expulsar</option><option value="BAN">banir</option></select></label><label>ID do cargo de quarentena<input id="raid-role" pattern="[0-9]{17,20}"></label></div>
+              <label>Canal local de registros<select id="raid-log"><option value="">sem canal</option></select></label>
+              <label>IDs confiáveis<textarea id="raid-trusted" rows="4" placeholder="Separe por vírgula, espaço ou linha"></textarea><small>Administradores que não entram no contador destrutivo.</small></label>
+              <button>salvar anti-raid</button>
+            </form></article>
+            <article class="card"><h2>simulador seguro</h2><p>Exercita as regras sem remover, expulsar ou banir ninguém.</p><form id="raid-sim-form"><label>Evento<select id="raid-sim-type"><option value="join">entrada em massa</option><option value="destructive">ações destrutivas</option></select></label><label>Quantidade<input id="raid-sim-count" type="number" min="1" max="100" value="8"></label><label class="join-only">Idade das contas simuladas (horas)<input id="raid-sim-age" type="number" min="0" value="1"></label><label class="destroy-only" hidden>ID do executor<input id="raid-sim-actor" value="100000000000000002" pattern="[0-9]{17,20}"></label><label class="destroy-only" hidden>Tipo de ação<select id="raid-sim-action"><option>CHANNEL_DELETE</option><option>ROLE_DELETE</option><option>MEMBER_BAN_ADD</option><option>WEBHOOK_CREATE</option></select></label><button>executar simulação</button></form></article>
+          </div>
+          <article class="card"><div class="card-title"><h2>incidentes locais</h2><small>últimos 100</small></div><div id="incidents"></div></article>
         </section>
 
         <section class="view" data-page="orders">

@@ -9,6 +9,8 @@ import { assertStoreOwner, APPLICATION_ID, MODE, STORE_GUILD_ID, STORE_LAYOUT } 
 import { validateProduct, productMessage } from '../src/store/product.ts';
 import { sealStock, unsealStock } from '../src/store/crypto.ts';
 import { randomBytes } from 'node:crypto';
+import { buildV2Message, validateV2Panel } from '../src/v2.ts';
+import { AntiRaidEngine, validateAntiRaid } from '../src/antiRaid.ts';
 
 const root = resolve(import.meta.dirname, '..');
 const product = { title: 'item teste', description: 'conteúdo de teste', category: 'geral', priceCents: 1000, imageUrl: '', footer: 'dark store', buttonLabel: 'comprar', accentColor: '#aeb1b6', divider: true, active: true };
@@ -31,6 +33,33 @@ test('produto V2 é validado e estoque criptografado é autenticado', () => {
   const key = randomBytes(32), sealed = sealStock('segredo', key);
   assert.equal(unsealStock(sealed, key), 'segredo');
   assert.throws(() => unsealStock(sealed, randomBytes(32)));
+});
+
+test('editor V2 completo valida URLs, cargos e gera componentes nativos', () => {
+  const panel = validateV2Panel({ name: 'regras', channelId: '100000000000000001', title: 'regras', description: '**leia**', color: '#aeb1b6', imageUrl: 'https://example.com/banner.webp', assetId: '', thumbnailUrl: 'https://example.com/icon.png', footer: 'dark store', imagePosition: 'top', showDivider: true, spacing: 'large', buttons: [
+    { label: 'site', type: 'LINK', url: 'https://example.com/', roleId: '', roleMode: 'ADD', style: 'SECONDARY', emoji: '🔗' },
+    { label: 'cliente', type: 'ROLE', url: '', roleId: '100000000000000002', roleMode: 'TOGGLE', style: 'SUCCESS', emoji: '' }
+  ] });
+  const message = buildV2Message(panel);
+  assert.equal(message.flags, 32768);
+  assert.deepEqual(message.allowed_mentions.parse, []);
+  const row = message.components[0].components.find(c => c.type === 1);
+  assert.equal(row.components[0].style, 5);
+  assert.equal(row.components[1].custom_id, 'v2role:toggle:100000000000000002');
+  assert.throws(() => validateV2Panel({ ...panel, imageUrl: 'http://inseguro.test' }));
+  assert.throws(() => validateV2Panel({ ...panel, buttons: Array(6).fill(panel.buttons[0]) }));
+});
+
+test('anti-raid detecta rajadas, respeita confiança e valida limites', () => {
+  const settings = validateAntiRaid({ enabled: true, joinLimit: 3, joinWindowSeconds: 10, minAccountAgeHours: 0, destructiveLimit: 2, destructiveWindowSeconds: 15, action: 'QUARANTINE', quarantineRoleId: '100000000000000003', logChannelId: '', trustedUserIds: ['100000000000000004'] });
+  const engine = new AntiRaidEngine(), now = Date.now();
+  assert.equal(engine.join(settings, now - 100 * 3600_000, now).detected, false);
+  assert.equal(engine.join(settings, now - 100 * 3600_000, now + 1).detected, false);
+  assert.equal(engine.join(settings, now - 100 * 3600_000, now + 2).detected, true);
+  assert.equal(engine.audit(settings, '100000000000000004', 'CHANNEL_DELETE').detected, false);
+  assert.equal(engine.audit(settings, '100000000000000005', 'CHANNEL_DELETE', now).detected, false);
+  assert.equal(engine.audit(settings, '100000000000000005', 'ROLE_DELETE', now + 1).detected, true);
+  assert.throws(() => validateAntiRaid({ ...settings, joinLimit: 2 }));
 });
 
 test('painel local executa fluxo completo sem OAuth, token ou Discord', async () => {
@@ -72,6 +101,15 @@ test('painel local executa fluxo completo sem OAuth, token ou Discord', async ()
     assert.equal(state.mode, 'local-simulation');
     assert.equal(state.channels.filter(c => c.type === 2).length, 2);
     const channelId = state.channels.find(c => c.key === 'accounts').id;
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
+    const uploadResponse = await api('/api/assets', { method: 'POST', headers: { origin, cookie, 'content-type': 'image/png', 'x-file-name': encodeURIComponent('teste.png') }, body: png });
+    assert.equal(uploadResponse.status, 200);
+    const asset = await uploadResponse.json();
+    const v2 = await call('/api/v2-panels', { panel: { name: 'painel teste', channelId, title: 'dark', description: '**teste local**', color: '#aeb1b6', imageUrl: '', assetId: asset.id, thumbnailUrl: '', footer: 'dark store', imagePosition: 'top', showDivider: true, spacing: 'small', buttons: [{ label: 'site', type: 'LINK', url: 'https://example.com/', roleId: '', roleMode: 'ADD', style: 'SECONDARY', emoji: '' }] } });
+    assert.ok(v2.id);
+    await call('/api/anti-raid', { settings: { enabled: true, joinLimit: 3, joinWindowSeconds: 10, minAccountAgeHours: 0, destructiveLimit: 2, destructiveWindowSeconds: 15, action: 'QUARANTINE', quarantineRoleId: '100000000000000003', logChannelId: channelId, trustedUserIds: [] } });
+    const raid = await call('/api/anti-raid/simulate', { type: 'join', count: 3, accountAgeHours: 100, targetId: '100000000000000006' });
+    assert.equal(raid.detected, true);
     const saved = await call('/api/products', { channelId, product });
     await call('/api/stock', { productId: saved.id, text: 'entrega secreta de teste' });
     const order = await call('/api/orders', { productId: saved.id, userId: '100000000000000001' });
@@ -79,6 +117,9 @@ test('painel local executa fluxo completo sem OAuth, token ou Discord', async ()
     state = await (await api('/api/state', { headers: { cookie } })).json();
     assert.equal(state.orders[0].status, 'delivered');
     assert.equal(state.products[0].stock, 0);
+    assert.equal(state.panels.length, 1);
+    assert.equal(state.incidents.length, 1);
+    assert.equal((await api(`/api/assets/${asset.id}`, { headers: { cookie } })).status, 200);
     const delivery = await api(`/api/delivery/${order.id}`, { headers: { cookie } });
     assert.equal(await delivery.text(), 'entrega secreta de teste');
     assert.equal(stderr, '');
