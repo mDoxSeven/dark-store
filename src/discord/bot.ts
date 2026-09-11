@@ -21,6 +21,7 @@ import { refreshDiscordCatalog } from '../store/discordCatalog.js';
 import { DISCORD_SELECT_ID } from '../store/discordMessage.js';
 import { refreshVerificationPanel } from '../store/verification.js';
 import { VERIFICATION_BUTTON_ID } from '../store/verificationMessage.js';
+import { welcomeMessage } from '../store/welcomeMessage.js';
 import { confirmationTicketMessage, parseTicketButton, paymentTicketMessage } from '../store/tickets.js';
 const errorText = (error: unknown) => error instanceof Error ? error.message.slice(0, 1500) : 'Ação não concluída.';
 
@@ -182,8 +183,26 @@ async function handleVerification(interaction: ButtonInteraction) {
   if (antiRaid?.quarantineRoleId && member.roles.cache.has(antiRaid.quarantineRoleId)) {
     throw new Error('Sua entrada está em análise pela proteção do servidor.');
   }
-  if (!member.roles.cache.has(verified.id)) await member.roles.add(verified, 'Verificação concluída na dark store');
+  const firstVerification = !member.roles.cache.has(verified.id);
+  if (firstVerification) await member.roles.add(verified, 'Verificação concluída na dark store');
   if (member.roles.cache.has(unverified.id)) await member.roles.remove(unverified, 'Verificação concluída na dark store');
+  if (firstVerification) {
+    try {
+      const settings = await prisma.digitalStore.findUnique({ where: { guildId: STORE_GUILD_ID } });
+      const ids = JSON.parse(settings?.channelsJson || '{}') as Record<string, string>;
+      const welcomeChannel = ids.welcome ? await interaction.guild.channels.fetch(ids.welcome) : null;
+      if (!welcomeChannel?.isSendable()) throw new Error('Canal de boas-vindas indisponível.');
+      await welcomeChannel.send(welcomeMessage({
+        id: member.id,
+        displayName: member.displayName,
+        avatarUrl: member.displayAvatarURL({ extension: 'png', size: 256 }),
+        guildName: interaction.guild.name,
+        memberCount: interaction.guild.memberCount,
+      }) as MessageCreateOptions);
+    } catch (error) {
+      console.error(`boas-vindas: ${errorText(error)}`);
+    }
+  }
   await interaction.editReply('Verificação concluída. O acesso à loja foi liberado.');
 }
 

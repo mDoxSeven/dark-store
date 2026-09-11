@@ -84,6 +84,8 @@ O mesmo fluxo existe no canal `discord`: cadastre produtos ativos com a categori
 
 O `/criar` valida os cargos `1547683703227154542` (entrada pendente) e `1548020246537830520` (membro verificado), cria o canal `verificacao`, aplica as permissões da estrutura e publica o painel V2. Novos membros recebem automaticamente o cargo de entrada e enxergam apenas a verificação. Ao clicar em **Verificar**, o bot adiciona o cargo verificado, remove o cargo inicial e libera os canais públicos. Os dois cargos precisam existir e ficar abaixo do cargo do bot.
 
+Na primeira verificação, o bot também publica automaticamente no canal `boas-vindas` um Components V2 com a menção, o avatar e a posição do novo membro. Cliques repetidos não duplicam o anúncio.
+
 ## Estoque automático e manual
 
 O estoque automático recebe um código autorizado por bloco e envia uma unidade no privado após a aprovação. O estoque manual recebe apenas uma quantidade numérica: ao confirmar o pagamento, uma unidade é baixada e o pedido fica como **entrega manual pendente**. Depois de entregar pelo ticket, use **marcar entrega concluída** no painel. Quando os dois tipos existem no mesmo produto, o estoque automático é consumido primeiro.

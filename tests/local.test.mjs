@@ -17,6 +17,7 @@ import { buildPixPayload, crc16, pixQrPng, validatePixSettings } from '../src/st
 import { SPOTIFY_SELECT_ID, spotifyCatalogMessage } from '../src/store/spotifyMessage.ts';
 import { DISCORD_BANNER_URL, DISCORD_SELECT_ID, discordCatalogMessage } from '../src/store/discordMessage.ts';
 import { VERIFICATION_BANNER_URL, VERIFICATION_BUTTON_ID, verificationMessage } from '../src/store/verificationMessage.ts';
+import { welcomeMessage } from '../src/store/welcomeMessage.ts';
 import { confirmationTicketMessage, parseTicketButton, paymentTicketMessage, ticketButtonId } from '../src/store/tickets.ts';
 
 const root = resolve(import.meta.dirname, '..');
@@ -59,6 +60,12 @@ test('verificação, catálogos e ticket usam Components V2 e botões cinza', ()
   assert.equal(verificationButton.style, 2);
   assert.ok(verification.components[0].components.find(component => component.type === 12).items[0].media.url.endsWith('/verificacao-banner-dark-v2.png'));
   assert.match(VERIFICATION_BANNER_URL, /^https:\/\//);
+  const welcome = welcomeMessage({ id: '100000000000000009', displayName: 'Cliente', avatarUrl: 'https://cdn.discordapp.com/embed/avatars/0.png', guildName: 'dark store', memberCount: 42 });
+  assert.equal(welcome.flags, 32768);
+  assert.deepEqual(welcome.allowedMentions.users, ['100000000000000009']);
+  assert.ok(welcome.components[0].components.find(component => component.type === 9).components[0].content.includes('<@100000000000000009>'));
+  assert.ok(welcome.components[0].components.find(component => component.type === 9).accessory.media.url.startsWith('https://'));
+  assert.ok(welcome.components[0].components.some(component => component.type === 10 && component.content.includes('Membro nº 42')));
   const id = ticketButtonId('confirm', 'ticket_123456');
   assert.deepEqual(parseTicketButton(id), { action: 'confirm', ticketId: 'ticket_123456' });
   assert.equal(parseTicketButton('store:ticket:admin:ticket_123456'), null);
