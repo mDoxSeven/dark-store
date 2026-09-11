@@ -125,7 +125,14 @@
 
         <section class="view" data-page="settings">
           <div class="page-title"><div><p class="eyebrow">AJUSTES</p><h1>configurações</h1></div></div>
-          <article class="card"><form id="settings-form"><label>Instruções de pagamento<textarea id="instructions" maxlength="1000" rows="5"></textarea></label><label>Canal de vendas concluídas<select id="sales-channel"><option value="">não publicar</option></select></label><button>salvar configurações</button></form></article>
+          <article class="card"><form id="settings-form">
+            <div class="card-title"><div><h2>pagamento Pix</h2><p class="warning">Gera QR e copia e cola com o valor exato de cada pedido. A confirmação permanece manual.</p></div><label class="switch"><input id="pix-enabled" type="checkbox"> ativar Pix</label></div>
+            <label>Chave Pix<input id="pix-key" maxlength="77" autocomplete="off" placeholder="CPF, CNPJ, e-mail, telefone ou chave aleatória"></label>
+            <div class="two"><label>Nome do recebedor<input id="pix-name" maxlength="25" placeholder="como registrado no Pix"></label><label>Cidade<input id="pix-city" maxlength="15" placeholder="SAO PAULO"></label></div>
+            <label>Instruções adicionais<textarea id="instructions" maxlength="1000" rows="4"></textarea></label>
+            <label>Canal de vendas concluídas<select id="sales-channel"><option value="">não publicar</option></select></label>
+            <button>salvar configurações</button>
+          </form></article>
           <article class="card"><h2>segurança do painel</h2><ul><li>Servidor web escutando apenas em <code>127.0.0.1</code>.</li><li>Acesso remoto somente por túnel SSH.</li><li>Token armazenado exclusivamente no <code>.env</code> privado da VPS.</li><li>Banco e chave de estoque próprios na pasta <code>data/</code>.</li></ul></article>
         </section>
       </section>

@@ -67,6 +67,10 @@ export function makeServer() {
           const payload = await service.delivery(path.slice(14));
           res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Content-Disposition': 'attachment; filename="entrega-simulada.txt"' }); res.end(payload); return;
         }
+        if (path.startsWith('/api/pix/') && method === 'GET') {
+          const png = await service.pixQr(path.slice(9));
+          res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': png.length, 'Content-Disposition': 'inline; filename="pix-pedido.png"' }); res.end(png); return;
+        }
         if (path.startsWith('/api/assets/') && method === 'GET') {
           const asset = await service.getAsset(path.slice(12));
           res.writeHead(200, { 'Content-Type': asset.mime, 'Content-Length': asset.size, 'Content-Disposition': `inline; filename="${asset.filename.replace(/["\\]/g, '-') }"` }); res.end(asset.data); return;

@@ -10,6 +10,7 @@ import { createOrder, approveOrder, cancelOrder } from './store/orders.js';
 import { sealStock, unsealStock, storeKey, stockFingerprint } from './store/crypto.js';
 import { buildV2Message, validateV2Panel, type V2PanelInput } from './v2.js';
 import { AntiRaidEngine, respondToRaid, validateAntiRaid, type AntiRaidSettings } from './antiRaid.js';
+import { pixQrPng, validatePixSettings } from './store/pix.js';
 import { runtimeChannels, runtimeDiscordStatus, runtimeGuild, runtimeMode, runtimeRoles, runtimeTransport } from './runtime.js';
 
 export class InputError extends Error {}
@@ -22,7 +23,7 @@ export async function state() {
   const [products, orders, channels, roles, settings, messages, panels, antiRaid, incidents] = await Promise.all([
     prisma.digitalProduct.findMany({ where: { guildId: STORE_GUILD_ID }, orderBy: { updatedAt: 'desc' }, take: 200, include: { _count: { select: { stock: { where: { claimedAt: null } } } } } }),
     prisma.digitalOrder.findMany({ where: { guildId: STORE_GUILD_ID }, orderBy: { createdAt: 'desc' }, take: 100,
-      select: { id: true, productId: true, userId: true, productTitle: true, priceCents: true, status: true, createdAt: true } }),
+      select: { id: true, productId: true, userId: true, productTitle: true, priceCents: true, pixPayload: true, pixTxId: true, status: true, createdAt: true } }),
     runtimeChannels(), runtimeRoles(), prisma.digitalStore.findUnique({ where: { guildId: STORE_GUILD_ID } }),
     prisma.localMessage.count(),
     prisma.managedV2Panel.findMany({ where: { guildId: STORE_GUILD_ID }, orderBy: { updatedAt: 'desc' }, take: 100, include: { buttons: { orderBy: { position: 'asc' } } } }),
@@ -106,8 +107,18 @@ export async function saveSettings(body: Record<string, unknown>) {
   if (typeof body.paymentInstructions !== 'string' || body.paymentInstructions.length > 1000) throw new InputError('Instruções: até 1000 caracteres.');
   const salesChannelId = typeof body.salesChannelId === 'string' && body.salesChannelId ? body.salesChannelId : null;
   if (salesChannelId) await runtimeTransport().checkChannel(salesChannelId);
-  await prisma.digitalStore.upsert({ where: { guildId: STORE_GUILD_ID }, create: { guildId: STORE_GUILD_ID, paymentInstructions: body.paymentInstructions, salesChannelId }, update: { paymentInstructions: body.paymentInstructions, salesChannelId } });
+  let pix;
+  try {
+    pix = validatePixSettings({ enabled: body.pixEnabled === true, key: String(body.pixKey || ''), merchantName: String(body.pixMerchantName || ''), merchantCity: String(body.pixMerchantCity || '') });
+  } catch (error) { throw new InputError(error instanceof Error ? error.message : 'Configuração Pix inválida.'); }
+  const data = { paymentInstructions: body.paymentInstructions, salesChannelId, pixEnabled: pix.enabled, pixKey: pix.key || null, pixMerchantName: pix.merchantName || null, pixMerchantCity: pix.merchantCity || null };
+  await prisma.digitalStore.upsert({ where: { guildId: STORE_GUILD_ID }, create: { guildId: STORE_GUILD_ID, ...data }, update: data });
   return { message: runtimeMode() === 'discord-live' ? 'Configurações salvas para o servidor.' : 'Configurações locais salvas.' };
+}
+export async function pixQr(id: string) {
+  const order = await prisma.digitalOrder.findFirst({ where: { id, guildId: STORE_GUILD_ID }, select: { pixPayload: true } });
+  if (!order?.pixPayload) throw new InputError('Este pedido não possui cobrança Pix.');
+  return pixQrPng(order.pixPayload);
 }
 export async function delivery(id: string) {
   const order = await prisma.digitalOrder.findFirst({ where: { id, guildId: STORE_GUILD_ID, status: 'delivered' }, include: { stock: true } });

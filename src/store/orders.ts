@@ -2,6 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import { assertStoreOwner, STORE_GUILD_ID } from "./config.js";
 import { unsealStock } from "./crypto.js";
 import type { StoreTransport } from "./transport.js";
+import { buildPixPayload } from "./pix.js";
 
 export async function createOrder(db: PrismaClient, productId: string, userId: string, interactionId: string) {
   return db.$transaction(async (tx) => {
@@ -10,8 +11,13 @@ export async function createOrder(db: PrismaClient, productId: string, userId: s
     if (await tx.digitalOrder.count({ where: { guildId: STORE_GUILD_ID, userId, status: "pending" } }) >= 3) throw new Error("Voce ja tem tres pedidos pendentes. Procure o suporte.");
     const product = await tx.digitalProduct.findFirst({ where: { id: productId, guildId: STORE_GUILD_ID, active: true } });
     if (!product || !await tx.digitalStock.count({ where: { productId, claimedAt: null } })) throw new Error("Produto indisponivel ou sem estoque.");
+    const settings = await tx.digitalStore.findUnique({ where: { guildId: STORE_GUILD_ID } });
+    const txid = interactionId.replace(/[^a-zA-Z0-9]/g, '').slice(-25) || undefined;
+    const pixPayload = settings?.pixEnabled && settings.pixKey && settings.pixMerchantName && settings.pixMerchantCity && txid
+      ? buildPixPayload({ key: settings.pixKey, merchantName: settings.pixMerchantName, merchantCity: settings.pixMerchantCity, amountCents: product.priceCents, txid })
+      : null;
     return tx.digitalOrder.create({ data: { guildId: STORE_GUILD_ID, productId, userId, interactionId,
-      activeKey: `${productId}:${userId}`, productTitle: product.title, priceCents: product.priceCents } });
+      activeKey: `${productId}:${userId}`, productTitle: product.title, priceCents: product.priceCents, pixPayload, pixTxId: txid || null } });
   });
 }
 

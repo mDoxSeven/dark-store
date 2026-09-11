@@ -13,6 +13,7 @@ import { buildV2Message, validateV2Panel } from '../src/v2.ts';
 import { AntiRaidEngine, validateAntiRaid } from '../src/antiRaid.ts';
 import { AuditLogEvent } from 'discord.js';
 import { auditActionName, parseRoleButton } from '../src/discord/ids.ts';
+import { buildPixPayload, crc16, pixQrPng, validatePixSettings } from '../src/store/pix.ts';
 
 const root = resolve(import.meta.dirname, '..');
 const product = { title: 'item teste', description: 'conteúdo de teste', category: 'geral', priceCents: 1000, imageUrl: '', footer: 'dark store', buttonLabel: 'comprar', accentColor: '#aeb1b6', divider: true, active: true };
@@ -72,6 +73,19 @@ test('integração interpreta somente botões e auditorias autorizados', () => {
   assert.equal(auditActionName(AuditLogEvent.MessageDelete), null);
 });
 
+test('Pix gera BR Code com valor, txid, CRC e QR legível', async () => {
+  const settings = validatePixSettings({ enabled: true, key: 'pix@example.com', merchantName: 'Loja Dárk', merchantCity: 'São Paulo' });
+  assert.deepEqual(settings, { enabled: true, key: 'pix@example.com', merchantName: 'LOJA DARK', merchantCity: 'SAO PAULO' });
+  const payload = buildPixPayload({ ...settings, amountCents: 1990, txid: 'pedido-ABC_123' });
+  assert.match(payload, /^00020101021226/);
+  assert.ok(payload.includes('540519.90'));
+  assert.ok(payload.includes('62160512pedidoABC123'));
+  assert.equal(payload.slice(-4), crc16(payload.slice(0, -4)));
+  const png = await pixQrPng(payload);
+  assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+  assert.throws(() => validatePixSettings({ enabled: true, key: '', merchantName: '', merchantCity: '' }));
+});
+
 test('painel local executa fluxo completo sem OAuth, token ou Discord', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'dark-store-local-'));
   const port = 32000 + Math.floor(Math.random() * 5000);
@@ -119,15 +133,20 @@ test('painel local executa fluxo completo sem OAuth, token ou Discord', async ()
     const asset = await uploadResponse.json();
     const v2 = await call('/api/v2-panels', { panel: { name: 'painel teste', channelId, title: 'dark', description: '**teste local**', color: '#aeb1b6', imageUrl: '', assetId: asset.id, thumbnailUrl: '', footer: 'dark store', imagePosition: 'top', showDivider: true, spacing: 'small', buttons: [{ label: 'site', type: 'LINK', url: 'https://example.com/', roleId: '', roleMode: 'ADD', style: 'SECONDARY', emoji: '' }] } });
     assert.ok(v2.id);
+    await call('/api/settings', { paymentInstructions: 'Confira o valor antes de pagar.', salesChannelId: '', pixEnabled: true, pixKey: 'pix@example.com', pixMerchantName: 'Dark Store', pixMerchantCity: 'Sao Paulo' });
     await call('/api/anti-raid', { settings: { enabled: true, joinLimit: 3, joinWindowSeconds: 10, minAccountAgeHours: 0, destructiveLimit: 2, destructiveWindowSeconds: 15, action: 'QUARANTINE', quarantineRoleId: '100000000000000003', logChannelId: channelId, trustedUserIds: [] } });
     const raid = await call('/api/anti-raid/simulate', { type: 'join', count: 3, accountAgeHours: 100, targetId: '100000000000000006' });
     assert.equal(raid.detected, true);
     const saved = await call('/api/products', { channelId, product });
     await call('/api/stock', { productId: saved.id, text: 'entrega secreta de teste' });
     const order = await call('/api/orders', { productId: saved.id, userId: '100000000000000001' });
+    const qr = await api(`/api/pix/${order.id}`, { headers: { cookie } });
+    assert.equal(qr.status, 200);
+    assert.equal(qr.headers.get('content-type'), 'image/png');
     await call('/api/order-action', { id: order.id, operation: 'approve', confirmed: true });
     state = await (await api('/api/state', { headers: { cookie } })).json();
     assert.equal(state.orders[0].status, 'delivered');
+    assert.match(state.orders[0].pixPayload, /^000201/);
     assert.equal(state.products[0].stock, 0);
     assert.equal(state.panels.length, 1);
     assert.equal(state.incidents.length, 1);

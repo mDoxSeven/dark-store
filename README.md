@@ -12,6 +12,7 @@ Aplicação Discord e painel privado independentes do empty.
 - `/criar` idempotente para categorias, canais, duas calls e cargo de quarentena;
 - catálogo e estoque criptografado em SQLite próprio;
 - pedidos com aprovação manual e entrega privada em arquivo;
+- cobrança Pix estática por pedido, com valor exato, txid, copia e cola e QR Code privado;
 - editor completo de Components V2 com Markdown, galeria, thumbnail, divisores e anexos;
 - botões V2 de link ou cargo, com adicionar, remover ou alternar;
 - anti-raid para rajadas de entrada, contas novas e ações destrutivas no Audit Log;
@@ -65,6 +66,12 @@ Resultado esperado:
 ```
 
 No Discord, execute `/criar` primeiro sem confirmação para ver a prévia e depois com `confirmar: Sim`. O comando não remove canais existentes e mantém os IDs criados no banco.
+
+## Pagamento Pix
+
+No painel, abra `configurações`, informe a chave Pix, o nome do recebedor exatamente como registrado no DICT e a cidade, depois ative o Pix. Cada novo pedido passa a guardar seu próprio BR Code com valor e identificador da compra. O cliente recebe o código copia e cola e o QR Code na resposta privada do botão de compra.
+
+O QR não confirma recebimento automaticamente. Antes de aprovar e entregar um item, confira o pagamento na instituição financeira e compare valor e identificador do pedido. Pedidos antigos preservam o código gerado mesmo se a configuração Pix mudar.
 
 ## Acessar o painel
 

@@ -11,6 +11,7 @@ import { createOrder } from '../store/orders.js';
 import { getAntiRaidSettings } from '../service.js';
 import { discordRuntime } from './transport.js';
 import { auditActionName, parseRoleButton } from './ids.js';
+import { pixQrPng } from '../store/pix.js';
 const errorText = (error: unknown) => error instanceof Error ? error.message.slice(0, 1500) : 'Ação não concluída.';
 
 async function handleCriar(interaction: ChatInputCommandInteraction) {
@@ -48,7 +49,11 @@ async function handlePurchase(interaction: ButtonInteraction) {
   const productId = interaction.customId.slice('store:buy:'.length);
   const order = await createOrder(prisma, productId, interaction.user.id, interaction.id);
   const settings = await prisma.digitalStore.findUnique({ where: { guildId: STORE_GUILD_ID } });
-  await interaction.editReply({ content: `Pedido \`${order.id}\` criado. Aguarde a confirmação da equipe.\n${settings?.paymentInstructions || ''}`.slice(0, 1900), allowedMentions: { parse: [] } });
+  const pix = order.pixPayload
+    ? `\n**Pix copia e cola:**\n\`\`\`\n${order.pixPayload}\n\`\`\`\nO QR Code está anexado. O pedido só será entregue após a equipe conferir o pagamento.`
+    : `\n${settings?.paymentInstructions || 'Aguarde as instruções da equipe antes de realizar qualquer pagamento.'}`;
+  const files = order.pixPayload ? [{ attachment: await pixQrPng(order.pixPayload), name: `pix-${order.id}.png` }] : [];
+  await interaction.editReply({ content: `Pedido \`${order.id}\` criado · ${order.productTitle}.${pix}`.slice(0, 1900), files, allowedMentions: { parse: [] } });
   if (settings?.ordersChannelId) {
     const channel = await interaction.guild?.channels.fetch(settings.ordersChannelId).catch(() => null);
     if (channel?.isSendable()) await channel.send({ content: `Novo pedido \`${order.id}\` · <@${interaction.user.id}> · ${order.productTitle}`, allowedMentions: { users: [interaction.user.id] } }).catch(() => {});
