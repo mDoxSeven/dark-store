@@ -15,6 +15,7 @@ import { AuditLogEvent } from 'discord.js';
 import { auditActionName, parseRoleButton } from '../src/discord/ids.ts';
 import { buildPixPayload, crc16, pixQrPng, validatePixSettings } from '../src/store/pix.ts';
 import { SPOTIFY_SELECT_ID, spotifyCatalogMessage } from '../src/store/spotifyMessage.ts';
+import { DISCORD_BANNER_URL, DISCORD_SELECT_ID, discordCatalogMessage } from '../src/store/discordMessage.ts';
 import { confirmationTicketMessage, parseTicketButton, paymentTicketMessage, ticketButtonId } from '../src/store/tickets.ts';
 
 const root = resolve(import.meta.dirname, '..');
@@ -26,6 +27,7 @@ test('identidade independente e estrutura prevista são fixas', () => {
   assert.equal(MODE, 'local-simulation');
   assert.equal(STORE_LAYOUT.flatMap(g => g.channels).filter(c => c.type === 2).length, 2);
   assert.ok(STORE_LAYOUT.flatMap(g => g.channels).some(c => c.name === 'spotify'));
+  assert.ok(STORE_LAYOUT.flatMap(g => g.channels).some(c => c.name === 'discord'));
   assert.ok(STORE_LAYOUT.some(g => g.key === 'tickets' && 'private' in g));
   assert.deepEqual(supportRoleIds(null), [...DEFAULT_SUPPORT_ROLE_IDS]);
   assert.deepEqual(DEFAULT_SUPPORT_ROLE_IDS, ['1548020621760274492', '1548020929962180658']);
@@ -33,7 +35,7 @@ test('identidade independente e estrutura prevista são fixas', () => {
   assert.throws(() => assertStoreOwner('outro', '1002774556269891694'));
 });
 
-test('catálogo Spotify e ticket usam Components V2 e botões cinza', () => {
+test('catálogos Discord e Spotify e ticket usam Components V2 e botões cinza', () => {
   const products = Array.from({ length: 30 }, (_, index) => ({ id: `produto${index}`, title: `Item ${index}`, description: '', priceCents: 1990, stock: index === 0 ? 0 : 2 }));
   const catalog = spotifyCatalogMessage(products);
   assert.equal(catalog.flags, 32768);
@@ -41,6 +43,11 @@ test('catálogo Spotify e ticket usam Components V2 e botões cinza', () => {
   assert.equal(select.custom_id, SPOTIFY_SELECT_ID);
   assert.equal(select.options.length, 25);
   assert.ok(select.options.every(option => option.value !== 'produto0'));
+  const discord = discordCatalogMessage(products);
+  const discordSelect = discord.components[0].components.find(component => component.type === 1).components[0];
+  assert.equal(discordSelect.custom_id, DISCORD_SELECT_ID);
+  assert.ok(discord.components[0].components.find(component => component.type === 12).items[0].media.url.endsWith('/contas-discord-banner-dark.png'));
+  assert.match(DISCORD_BANNER_URL, /^https:\/\//);
   const id = ticketButtonId('confirm', 'ticket_123456');
   assert.deepEqual(parseTicketButton(id), { action: 'confirm', ticketId: 'ticket_123456' });
   assert.equal(parseTicketButton('store:ticket:admin:ticket_123456'), null);
@@ -151,6 +158,8 @@ test('painel local executa fluxo completo sem OAuth, token ou Discord', async ()
     let state = await (await api('/api/state', { headers: { cookie } })).json();
     assert.equal(state.mode, 'local-simulation');
     assert.equal(state.channels.filter(c => c.type === 2).length, 2);
+    assert.ok(state.channels.some(c => c.key === 'discord' && c.type === 0));
+    assert.ok(state.channels.some(c => c.key === 'spotify' && c.type === 0));
     assert.deepEqual(state.roles, []);
     const channelId = state.channels.find(c => c.key === 'accounts').id;
     const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');

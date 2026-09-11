@@ -55,6 +55,7 @@ export async function setupStore(guild: Guild, actorId: string) {
     }
     await prisma.digitalStore.update({ where: { guildId: STORE_GUILD_ID }, data: {
       ordersChannelId: settings.ordersChannelId ?? ids.orders, salesChannelId: settings.salesChannelId ?? ids.completed,
+      discordChannelId: ids.discord,
       spotifyChannelId: ids.spotify,
     } });
     const channel = await guild.channels.fetch(ids.shop);

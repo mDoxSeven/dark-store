@@ -12,9 +12,11 @@ import { buildV2Message, validateV2Panel, type V2PanelInput } from './v2.js';
 import { AntiRaidEngine, respondToRaid, validateAntiRaid, type AntiRaidSettings } from './antiRaid.js';
 import { pixQrPng, validatePixSettings } from './store/pix.js';
 import { refreshSpotifyCatalog } from './store/spotify.js';
+import { refreshDiscordCatalog } from './store/discordCatalog.js';
 import { runtimeChannels, runtimeDiscordStatus, runtimeGuild, runtimeMode, runtimeRoles, runtimeTransport } from './runtime.js';
 
 export class InputError extends Error {}
+const refreshCatalogs = () => Promise.all([refreshSpotifyCatalog(), refreshDiscordCatalog()]);
 const requireProduct = async (id: string) => {
   const product = await prisma.digitalProduct.findFirst({ where: { id, guildId: STORE_GUILD_ID } });
   if (!product) throw new InputError('Produto não encontrado.');
@@ -39,7 +41,7 @@ export async function state() {
 }
 export async function simulateSetup(confirmed: boolean) {
   const result = await executeCriar(await runtimeGuild(), STORE_OWNER_ID, confirmed);
-  if (!result.preview) await refreshSpotifyCatalog();
+  if (!result.preview) await refreshCatalogs();
   return result;
 }
 async function refreshProduct(id: string) {
@@ -65,7 +67,7 @@ export async function saveProduct(body: Record<string, unknown>) {
   } else if (await prisma.digitalProduct.count() >= 200) throw new InputError('Limite desta versão: 200 produtos.');
   const p = id ? await prisma.digitalProduct.update({ where: { id }, data: { ...data, channelId } })
     : await prisma.digitalProduct.create({ data: { ...data, guildId: STORE_GUILD_ID, channelId } });
-  try { await Promise.all([refreshProduct(p.id), refreshSpotifyCatalog()]); }
+  try { await Promise.all([refreshProduct(p.id), refreshCatalogs()]); }
   catch { return { id: p.id, message: 'Produto salvo, mas a publicação não foi atualizada. Não recadastre; verifique o canal e tente salvar novamente.' }; }
   return { id: p.id, message: runtimeMode() === 'discord-live' ? 'Produto salvo e publicação atualizada no Discord.' : 'Produto salvo. Publicação local atualizada.' };
 }
@@ -81,7 +83,7 @@ export async function addStock(body: Record<string, unknown>) {
   if (quantity) {
     if (product.manualStock + quantity > 100_000) throw new InputError('O estoque manual total não pode ultrapassar 100.000 unidades.');
     await prisma.digitalProduct.update({ where: { id }, data: { manualStock: { increment: quantity } } });
-    try { await Promise.all([refreshProduct(id), refreshSpotifyCatalog()]); } catch { return { message: `${quantity} unidades manuais adicionadas. Salve o produto para atualizar a publicação.` }; }
+    try { await Promise.all([refreshProduct(id), refreshCatalogs()]); } catch { return { message: `${quantity} unidades manuais adicionadas. Salve o produto para atualizar a publicação.` }; }
     return { message: `${quantity} unidades adicionadas ao estoque manual.` };
   }
   if (items.length > 100 || items.some(s => s.length > 10_000)) throw new InputError('Até 100 itens, 10 mil caracteres por item, separados por linha em branco.');
@@ -96,7 +98,7 @@ export async function addStock(body: Record<string, unknown>) {
     }
     return added;
   }, { timeout: 15_000 });
-  try { await Promise.all([refreshProduct(id), refreshSpotifyCatalog()]); } catch { return { message: `${count} itens salvos. Salve o produto para atualizar sua prévia.` }; }
+  try { await Promise.all([refreshProduct(id), refreshCatalogs()]); } catch { return { message: `${count} itens salvos. Salve o produto para atualizar sua prévia.` }; }
   return { message: `${count} itens adicionados; duplicados ignorados.` };
 }
 export async function simulateOrder(body: Record<string, unknown>) {
@@ -116,7 +118,7 @@ export async function processOrder(body: Record<string, unknown>) {
     else if (body.operation === 'approve' || body.operation === 'retry') {
       actionMessage = await approveOrder(prisma, STORE_OWNER_ID, id, runtimeTransport(body.failDM === true), () => storeKey(), body.operation === 'retry');
     } else throw new InputError('Operação inválida.');
-  } finally { await Promise.allSettled([refreshProduct(order.productId), refreshSpotifyCatalog()]); }
+  } finally { await Promise.allSettled([refreshProduct(order.productId), refreshCatalogs()]); }
   const current = await prisma.digitalOrder.findUnique({ where: { id } });
   if (current?.status === 'delivered' || current?.status === 'cancelled' || current?.status === 'manual_fulfillment') {
     await prisma.checkoutTicket.updateMany({ where: { orderId: id }, data: { status: current.status, activeKey: null } });

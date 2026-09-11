@@ -34,6 +34,7 @@ export const STORE_LAYOUT = [
   { key: "sales", name: "COMPRAS • CATÁLOGO", channels: [
     { key: "shop", name: "compre-aqui", type: 0, readOnly: true },
     { key: "accounts", name: "contas", type: 0, readOnly: true },
+    { key: "discord", name: "discord", type: 0, readOnly: true },
     { key: "spotify", name: "spotify", type: 0, readOnly: true },
     { key: "completed", name: "vendas-realizadas", type: 0, readOnly: true },
     { key: "reviews", name: "avaliacoes", type: 0, readOnly: false },

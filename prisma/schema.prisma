@@ -20,6 +20,9 @@ model DigitalStore {
   spotifyChannelId    String?
   spotifyMessageId    String?
   spotifyPublishUntil DateTime?
+  discordChannelId    String?
+  discordMessageId    String?
+  discordPublishUntil DateTime?
   supportRoleId       String?
   supportRoleIds      String    @default("[]")
   setupUntil          DateTime?

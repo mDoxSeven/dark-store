@@ -15,6 +15,8 @@ import { auditActionName, parseRoleButton } from './ids.js';
 import { pixQrPng } from '../store/pix.js';
 import { refreshSpotifyCatalog } from '../store/spotify.js';
 import { SPOTIFY_SELECT_ID } from '../store/spotifyMessage.js';
+import { refreshDiscordCatalog } from '../store/discordCatalog.js';
+import { DISCORD_SELECT_ID } from '../store/discordMessage.js';
 import { confirmationTicketMessage, parseTicketButton, paymentTicketMessage } from '../store/tickets.js';
 const errorText = (error: unknown) => error instanceof Error ? error.message.slice(0, 1500) : 'Ação não concluída.';
 
@@ -25,7 +27,7 @@ async function handleCriar(interaction: ChatInputCommandInteraction) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const confirmed = interaction.options.getBoolean('confirmar') === true;
   const result = await executeCriar(interaction.guild, interaction.user.id, confirmed);
-  if (!result.preview) await refreshSpotifyCatalog();
+  if (!result.preview) await Promise.all([refreshSpotifyCatalog(), refreshDiscordCatalog()]);
   if (result.preview) {
     const count = result.layout.reduce((total, group) => total + group.channels.length, 0);
     await interaction.editReply(`Prévia pronta: ${result.layout.length} categorias e ${count} canais. Execute novamente marcando **confirmar: Sim**.`);
@@ -34,14 +36,14 @@ async function handleCriar(interaction: ChatInputCommandInteraction) {
   }
 }
 
-async function handleSpotifySelection(interaction: StringSelectMenuInteraction) {
+async function handleCatalogSelection(interaction: StringSelectMenuInteraction, category: 'spotify' | 'discord') {
   if (interaction.guildId !== STORE_GUILD_ID || !interaction.guild) throw new Error('Catálogo fora do servidor autorizado.');
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const productId = interaction.values[0];
   if (!productId || productId === 'unavailable') throw new Error('Este item não está disponível.');
   const product = await prisma.digitalProduct.findFirst({ where: { id: productId, guildId: STORE_GUILD_ID, active: true } });
   const automaticStock = product ? await prisma.digitalStock.count({ where: { productId, claimedAt: null } }) : 0;
-  if (!product || automaticStock + product.manualStock < 1) throw new Error('Produto indisponível ou sem estoque.');
+  if (!product || product.category.trim().toLocaleLowerCase('pt-BR') !== category || automaticStock + product.manualStock < 1) throw new Error('Produto indisponível ou sem estoque.');
   const existing = await prisma.checkoutTicket.findFirst({ where: { guildId: STORE_GUILD_ID, userId: interaction.user.id, status: { in: ['awaiting_confirmation', 'awaiting_payment'] } } });
   if (existing) {
     const existingChannel = await interaction.guild.channels.fetch(existing.channelId).catch(() => null);
@@ -65,12 +67,12 @@ async function handleSpotifySelection(interaction: StringSelectMenuInteraction) 
   }
   const safeName = interaction.user.username.toLocaleLowerCase('pt-BR').replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').slice(0, 28) || 'cliente';
   const channel = await interaction.guild.channels.create({
-    name: `spotify-${safeName}-${interaction.user.id.slice(-4)}`,
+    name: `${category}-${safeName}-${interaction.user.id.slice(-4)}`,
     type: ChannelType.GuildText,
     parent: ids.tickets || null,
     permissionOverwrites: overwrites,
     topic: `Atendimento privado · ${product.title} · ${interaction.user.id}`,
-    reason: 'Seleção no catálogo Spotify da dark store',
+    reason: `Seleção no catálogo ${category} da dark store`,
   });
   try {
     const ticket = await prisma.checkoutTicket.create({ data: {
@@ -219,7 +221,8 @@ export async function startDiscord(token: string) {
   client.on(Events.InteractionCreate, interaction => {
     void (async () => {
       if (interaction.isChatInputCommand() && interaction.commandName === 'criar') await handleCriar(interaction);
-      else if (interaction.isStringSelectMenu() && interaction.customId === SPOTIFY_SELECT_ID) await handleSpotifySelection(interaction);
+      else if (interaction.isStringSelectMenu() && interaction.customId === SPOTIFY_SELECT_ID) await handleCatalogSelection(interaction, 'spotify');
+      else if (interaction.isStringSelectMenu() && interaction.customId === DISCORD_SELECT_ID) await handleCatalogSelection(interaction, 'discord');
       else if (interaction.isButton()) {
         const role = parseRoleButton(interaction.customId);
         const ticket = parseTicketButton(interaction.customId);
