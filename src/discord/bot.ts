@@ -7,7 +7,7 @@ import { prisma } from '../lib/db.js';
 import { AntiRaidEngine, respondToRaid, type AntiRaidResponder } from '../antiRaid.js';
 import { criarCommand, executeCriar } from '../bot/criar.js';
 import { configureDiscordRuntime } from '../runtime.js';
-import { APPLICATION_ID, STORE_GUILD_ID, STORE_OWNER_ID } from '../store/config.js';
+import { APPLICATION_ID, STORE_GUILD_ID, STORE_OWNER_ID, supportRoleIds } from '../store/config.js';
 import { createOrder } from '../store/orders.js';
 import { getAntiRaidSettings } from '../service.js';
 import { discordRuntime } from './transport.js';
@@ -40,7 +40,8 @@ async function handleSpotifySelection(interaction: StringSelectMenuInteraction) 
   const productId = interaction.values[0];
   if (!productId || productId === 'unavailable') throw new Error('Este item não está disponível.');
   const product = await prisma.digitalProduct.findFirst({ where: { id: productId, guildId: STORE_GUILD_ID, active: true } });
-  if (!product || !await prisma.digitalStock.count({ where: { productId, claimedAt: null } })) throw new Error('Produto indisponível ou sem estoque.');
+  const automaticStock = product ? await prisma.digitalStock.count({ where: { productId, claimedAt: null } }) : 0;
+  if (!product || automaticStock + product.manualStock < 1) throw new Error('Produto indisponível ou sem estoque.');
   const existing = await prisma.checkoutTicket.findFirst({ where: { guildId: STORE_GUILD_ID, userId: interaction.user.id, status: { in: ['awaiting_confirmation', 'awaiting_payment'] } } });
   if (existing) {
     const existingChannel = await interaction.guild.channels.fetch(existing.channelId).catch(() => null);
@@ -58,8 +59,8 @@ async function handleSpotifySelection(interaction: StringSelectMenuInteraction) 
     { id: interaction.client.user.id, type: OverwriteType.Member, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ManageChannels] },
     { id: STORE_OWNER_ID, type: OverwriteType.Member, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
   ];
-  if (settings?.supportRoleId) {
-    const role = await interaction.guild.roles.fetch(settings.supportRoleId).catch(() => null);
+  for (const roleId of supportRoleIds(settings)) {
+    const role = await interaction.guild.roles.fetch(roleId).catch(() => null);
     if (role) overwrites.push({ id: role.id, type: OverwriteType.Role, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] });
   }
   const safeName = interaction.user.username.toLocaleLowerCase('pt-BR').replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').slice(0, 28) || 'cliente';
@@ -131,9 +132,9 @@ async function handleTicketButton(interaction: ButtonInteraction, parsed: NonNul
   notifyCooldowns.set(ticket.id, now + 120_000);
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const settings = await prisma.digitalStore.findUnique({ where: { guildId: STORE_GUILD_ID } });
-  const supportRole = settings?.supportRoleId ? await interaction.guild.roles.fetch(settings.supportRoleId).catch(() => null) : null;
-  const mention = supportRole ? `<@&${supportRole.id}>` : `<@${STORE_OWNER_ID}>`;
-  await ticketChannel.send({ content: `${mention}, <@${ticket.userId}> solicitou atendimento neste ticket.`, allowedMentions: supportRole ? { roles: [supportRole.id], users: [ticket.userId] } : { users: [STORE_OWNER_ID, ticket.userId] } });
+  const supportRoles = (await Promise.all(supportRoleIds(settings).map(id => interaction.guild!.roles.fetch(id).catch(() => null)))).filter(role => role !== null);
+  const mention = supportRoles.length ? supportRoles.map(role => `<@&${role.id}>`).join(' ') : `<@${STORE_OWNER_ID}>`;
+  await ticketChannel.send({ content: `${mention}, <@${ticket.userId}> solicitou atendimento neste ticket.`, allowedMentions: supportRoles.length ? { roles: supportRoles.map(role => role.id), users: [ticket.userId] } : { users: [STORE_OWNER_ID, ticket.userId] } });
   await interaction.editReply('Administrador notificado.');
 }
 

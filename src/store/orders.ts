@@ -10,7 +10,8 @@ export async function createOrder(db: PrismaClient, productId: string, userId: s
     if (existing) return existing;
     if (await tx.digitalOrder.count({ where: { guildId: STORE_GUILD_ID, userId, status: "pending" } }) >= 3) throw new Error("Voce ja tem tres pedidos pendentes. Procure o suporte.");
     const product = await tx.digitalProduct.findFirst({ where: { id: productId, guildId: STORE_GUILD_ID, active: true } });
-    if (!product || !await tx.digitalStock.count({ where: { productId, claimedAt: null } })) throw new Error("Produto indisponivel ou sem estoque.");
+    const automaticStock = product ? await tx.digitalStock.count({ where: { productId, claimedAt: null } }) : 0;
+    if (!product || automaticStock + product.manualStock < 1) throw new Error("Produto indisponivel ou sem estoque.");
     const settings = await tx.digitalStore.findUnique({ where: { guildId: STORE_GUILD_ID } });
     const txid = interactionId.replace(/[^a-zA-Z0-9]/g, '').slice(-25) || undefined;
     const pixPayload = settings?.pixEnabled && settings.pixKey && settings.pixMerchantName && settings.pixMerchantCity && txid
@@ -21,9 +22,9 @@ export async function createOrder(db: PrismaClient, productId: string, userId: s
   });
 }
 
-export async function approveOrder(db: PrismaClient, actorId: string, orderId: string, transport: StoreTransport, key: Buffer, retry = false) {
+export async function approveOrder(db: PrismaClient, actorId: string, orderId: string, transport: StoreTransport, getKey: () => Promise<Buffer>, retry = false) {
   assertStoreOwner(STORE_GUILD_ID, actorId);
-  const order = await db.$transaction(async (tx) => {
+  const reservation = await db.$transaction(async (tx) => {
     const record = await tx.digitalOrder.findFirst({ where: { id: orderId, guildId: STORE_GUILD_ID } });
     if (!record) throw new Error("Pedido inexistente.");
     if (record.status === "delivered") throw new Error("Este pedido ja foi entregue.");
@@ -32,15 +33,24 @@ export async function approveOrder(db: PrismaClient, actorId: string, orderId: s
     let stockId = record.stockId;
     if (!stockId) {
       const stock = await tx.digitalStock.findFirst({ where: { productId: record.productId, claimedAt: null }, orderBy: { createdAt: "asc" } });
-      if (!stock) throw new Error("Estoque esgotado: nao confirme novos pagamentos.");
+      if (!stock) {
+        const claimManual = await tx.digitalProduct.updateMany({ where: { id: record.productId, manualStock: { gt: 0 } }, data: { manualStock: { decrement: 1 } } });
+        if (claimManual.count !== 1) throw new Error("Estoque esgotado: nao confirme novos pagamentos.");
+        const claimed = await tx.digitalOrder.updateMany({ where: { id: record.id, status: record.status, updatedAt: record.updatedAt }, data: { status: "manual_fulfillment", activeKey: null, approvedBy: actorId } });
+        if (claimed.count !== 1) throw new Error("Outro processo ja alterou este pedido. Confira o resultado.");
+        return { manual: true as const, order: await tx.digitalOrder.findUniqueOrThrow({ where: { id: record.id }, include: { stock: true } }) };
+      }
       const claim = await tx.digitalStock.updateMany({ where: { id: stock.id, claimedAt: null }, data: { claimedAt: new Date() } });
       if (claim.count !== 1) throw new Error("Item reservado por outro pedido. Tente novamente.");
       stockId = stock.id;
     }
     const claimed = await tx.digitalOrder.updateMany({ where: { id: record.id, status: record.status, updatedAt: record.updatedAt }, data: { stockId, status: "delivering", approvedBy: actorId } });
     if (claimed.count !== 1) throw new Error("Outro processo ja alterou este pedido. Confira o resultado.");
-    return tx.digitalOrder.findUniqueOrThrow({ where: { id: record.id }, include: { stock: true } });
+    return { manual: false as const, order: await tx.digitalOrder.findUniqueOrThrow({ where: { id: record.id }, include: { stock: true } }) };
   });
+  if (reservation.manual) return "Pagamento confirmado. Uma unidade do estoque manual foi baixada; conclua a entrega no ticket.";
+  const order = reservation.order;
+  const key = await getKey();
   let messageId: string;
   try {
     messageId = await transport.deliver(order.userId, order.id, unsealStock(order.stock!.ciphertext, key));
@@ -58,6 +68,21 @@ export async function approveOrder(db: PrismaClient, actorId: string, orderId: s
     } catch { return "Entregue. O registro publico de venda falhou; a entrega nao sera repetida."; }
   }
   return "Pagamento confirmado e item entregue no privado.";
+}
+
+export async function completeManualOrder(db: PrismaClient, actorId: string, orderId: string, transport: StoreTransport) {
+  assertStoreOwner(STORE_GUILD_ID, actorId);
+  const changed = await db.digitalOrder.updateMany({ where: { id: orderId, guildId: STORE_GUILD_ID, status: "manual_fulfillment" }, data: { status: "delivered", activeKey: null } });
+  if (!changed.count) throw new Error("Somente entregas manuais pendentes podem ser concluídas aqui.");
+  const order = await db.digitalOrder.findUniqueOrThrow({ where: { id: orderId } });
+  const settings = await db.digitalStore.findUnique({ where: { guildId: STORE_GUILD_ID } });
+  if (settings?.salesChannelId) {
+    try {
+      const salesMessageId = await transport.sale(settings.salesChannelId, order);
+      await db.digitalOrder.update({ where: { id: order.id }, data: { salesMessageId } });
+    } catch { return "Entrega manual concluída. O registro público da venda falhou."; }
+  }
+  return "Entrega manual marcada como concluída.";
 }
 
 export async function cancelOrder(db: PrismaClient, actorId: string, orderId: string) {

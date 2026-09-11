@@ -110,7 +110,7 @@ export function makeServer() {
     } catch (error) {
       const text = error instanceof Error ? error.message : '';
       // Never log body, stock, cookies, credentials or raw Prisma exception arguments.
-      const known = error instanceof service.InputError || /^(Entrega nao confirmada|Este pedido ja|Pedido em processamento|Estoque esgotado|Somente pedidos pendentes|Produto indisponivel|Voce ja tem)/.test(text);
+      const known = error instanceof service.InputError || /^(Entrega nao confirmada|Este pedido ja|Pedido em processamento|Estoque esgotado|Somente pedidos pendentes|Somente entregas manuais|Produto indisponivel|Voce ja tem)/.test(text);
       if (!res.headersSent) json(res, known || error instanceof SyntaxError ? 400 : 500, { error: known ? text : 'Operação não concluída. Atualize e confira o resultado antes de repetir.' });
       else res.end();
     }

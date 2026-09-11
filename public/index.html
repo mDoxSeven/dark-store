@@ -66,9 +66,14 @@
               </form>
               <div id="preview" class="v2-preview"></div>
               <form id="stock-form">
-                <h3>estoque criptografado</h3><p>Um item por bloco; separe itens com uma linha em branco.</p>
+                <h3>estoque automático criptografado</h3><p>Um código autorizado por bloco; o bot entrega uma unidade automaticamente após a aprovação.</p>
                 <textarea id="stock" rows="7" maxlength="200000" placeholder="conteúdo do item 1&#10;&#10;conteúdo do item 2"></textarea>
-                <button>adicionar ao estoque</button>
+                <button>adicionar códigos automáticos</button>
+              </form>
+              <form id="manual-stock-form">
+                <h3>quantidade para entrega manual</h3><p>Use quando a equipe concluirá a entrega dentro do ticket. Uma unidade é baixada ao confirmar o pagamento.</p>
+                <label>Quantidade a adicionar<input id="stock-quantity" type="number" min="1" max="10000" step="1" value="1" required></label>
+                <button>adicionar quantidade manual</button>
               </form>
             </article>
           </div>
@@ -130,7 +135,7 @@
             <label>Chave Pix<input id="pix-key" maxlength="77" autocomplete="off" placeholder="CPF, CNPJ, e-mail, telefone ou chave aleatória"></label>
             <div class="two"><label>Nome do recebedor<input id="pix-name" maxlength="25" placeholder="como registrado no Pix"></label><label>Cidade<input id="pix-city" maxlength="15" placeholder="SAO PAULO"></label></div>
             <label>Instruções adicionais<textarea id="instructions" maxlength="1000" rows="4"></textarea></label>
-            <label>Cargo de atendimento<select id="support-role"><option value="">dono do servidor</option></select><small>Será marcado pelo botão “Notificar administrador” dentro dos tickets.</small></label>
+            <label>Cargos de atendimento<select id="support-role" multiple size="5"></select><small>Use Ctrl/Cmd para selecionar mais de um. Os dois cargos informados já são o padrão do sistema.</small></label>
             <label>Canal de vendas concluídas<select id="sales-channel"><option value="">não publicar</option></select></label>
             <button>salvar configurações</button>
           </form></article>

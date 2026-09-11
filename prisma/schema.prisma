@@ -21,6 +21,7 @@ model DigitalStore {
   spotifyMessageId    String?
   spotifyPublishUntil DateTime?
   supportRoleId       String?
+  supportRoleIds      String    @default("[]")
   setupUntil          DateTime?
 }
 
@@ -37,6 +38,7 @@ model DigitalProduct {
   accentColor  String           @default("#aeb1b6")
   divider      Boolean          @default(true)
   active       Boolean          @default(false)
+  manualStock  Int              @default(0)
   channelId    String?
   messageId    String?
   publishUntil DateTime?

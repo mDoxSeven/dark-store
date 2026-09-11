@@ -19,7 +19,7 @@ export async function refreshSpotifyCatalog() {
     });
     const products = records
       .filter(product => product.category.trim().toLocaleLowerCase('pt-BR') === 'spotify')
-      .map(product => ({ ...product, stock: product._count.stock }));
+      .map(product => ({ ...product, stock: product._count.stock + product.manualStock }));
     const messageId = await runtimeTransport().publish(settings.spotifyChannelId, settings.spotifyMessageId, spotifyCatalogMessage(products));
     await prisma.digitalStore.update({ where: { guildId: STORE_GUILD_ID }, data: { spotifyMessageId: messageId } });
   } finally {

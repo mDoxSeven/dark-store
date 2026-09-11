@@ -4,9 +4,9 @@ import { resolve } from 'node:path';
 import { prisma } from './lib/db.js';
 import { DATA } from './lib/paths.js';
 import { executeCriar } from './bot/criar.js';
-import { APPLICATION_ID, STORE_GUILD_ID, STORE_LAYOUT, STORE_OWNER_ID } from './store/config.js';
+import { APPLICATION_ID, STORE_GUILD_ID, STORE_LAYOUT, STORE_OWNER_ID, supportRoleIds as configuredSupportRoleIds } from './store/config.js';
 import { validateProduct, productMessage, type ProductInput } from './store/product.js';
-import { createOrder, approveOrder, cancelOrder } from './store/orders.js';
+import { createOrder, approveOrder, cancelOrder, completeManualOrder } from './store/orders.js';
 import { sealStock, unsealStock, storeKey, stockFingerprint } from './store/crypto.js';
 import { buildV2Message, validateV2Panel, type V2PanelInput } from './v2.js';
 import { AntiRaidEngine, respondToRaid, validateAntiRaid, type AntiRaidSettings } from './antiRaid.js';
@@ -24,7 +24,7 @@ export async function state() {
   const [products, orders, channels, roles, settings, messages, panels, antiRaid, incidents] = await Promise.all([
     prisma.digitalProduct.findMany({ where: { guildId: STORE_GUILD_ID }, orderBy: { updatedAt: 'desc' }, take: 200, include: { _count: { select: { stock: { where: { claimedAt: null } } } } } }),
     prisma.digitalOrder.findMany({ where: { guildId: STORE_GUILD_ID }, orderBy: { createdAt: 'desc' }, take: 100,
-      select: { id: true, productId: true, userId: true, productTitle: true, priceCents: true, pixPayload: true, pixTxId: true, status: true, createdAt: true } }),
+      select: { id: true, productId: true, userId: true, productTitle: true, priceCents: true, pixPayload: true, pixTxId: true, status: true, stockId: true, createdAt: true } }),
     runtimeChannels(), runtimeRoles(), prisma.digitalStore.findUnique({ where: { guildId: STORE_GUILD_ID } }),
     prisma.localMessage.count(),
     prisma.managedV2Panel.findMany({ where: { guildId: STORE_GUILD_ID }, orderBy: { updatedAt: 'desc' }, take: 100, include: { buttons: { orderBy: { position: 'asc' } } } }),
@@ -32,7 +32,8 @@ export async function state() {
     prisma.securityIncident.findMany({ where: { guildId: STORE_GUILD_ID }, orderBy: { createdAt: 'desc' }, take: 100 })
   ]);
   return { applicationId: APPLICATION_ID, guildId: STORE_GUILD_ID, mode: runtimeMode(), discord: runtimeDiscordStatus(), layout: STORE_LAYOUT,
-    products: products.map(({ _count, ...p }) => ({ ...p, stock: _count.stock })), orders, channels, roles, settings, messages,
+    products: products.map(({ _count, ...p }) => ({ ...p, automaticStock: _count.stock, stock: _count.stock + p.manualStock })), orders, channels, roles,
+    settings: settings ? { ...settings, supportRoleIds: configuredSupportRoleIds(settings) } : settings, messages,
     panels: panels.map(panel => ({ ...panel, buttons: panel.buttons.map(button => ({ ...button, url: button.url || '', roleId: button.roleId || '', emoji: button.emoji || '' })) })),
     antiRaid: antiRaid ? { ...antiRaid, quarantineRoleId: antiRaid.quarantineRoleId || '', logChannelId: antiRaid.logChannelId || '', trustedUserIds: JSON.parse(antiRaid.trustedUserIds) } : defaultAntiRaid(), incidents };
 }
@@ -47,7 +48,7 @@ async function refreshProduct(id: string) {
   try {
     const p = await requireProduct(id);
     if (!p.channelId) return;
-    const stock = await prisma.digitalStock.count({ where: { productId: id, claimedAt: null } });
+    const stock = p.manualStock + await prisma.digitalStock.count({ where: { productId: id, claimedAt: null } });
     const messageId = await runtimeTransport().publish(p.channelId, p.messageId, productMessage(p, stock));
     await prisma.digitalProduct.update({ where: { id }, data: { messageId } });
   } finally { await prisma.digitalProduct.updateMany({ where: { id }, data: { publishUntil: null } }); }
@@ -70,10 +71,20 @@ export async function saveProduct(body: Record<string, unknown>) {
 }
 export async function addStock(body: Record<string, unknown>) {
   const id = String(body.productId || '');
-  await requireProduct(id);
-  if (typeof body.text !== 'string' || body.text.length > 200_000) throw new InputError('Lote inválido ou muito grande.');
-  const items = body.text.split(/\r?\n\s*\r?\n/).map(s => s.trim()).filter(Boolean);
-  if (!items.length || items.length > 100 || items.some(s => s.length > 10_000)) throw new InputError('Até 100 itens, 10 mil caracteres por item, separados por linha em branco.');
+  const product = await requireProduct(id);
+  const quantity = Number(body.quantity || 0);
+  const text = typeof body.text === 'string' ? body.text : '';
+  if (text.length > 200_000) throw new InputError('Lote inválido ou muito grande.');
+  const items = text.split(/\r?\n\s*\r?\n/).map(s => s.trim()).filter(Boolean);
+  if (items.length && quantity) throw new InputError('Adicione códigos automáticos ou quantidade manual em uma ação, não os dois juntos.');
+  if (!items.length && (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 10_000)) throw new InputError('Informe de 1 a 10.000 unidades manuais.');
+  if (quantity) {
+    if (product.manualStock + quantity > 100_000) throw new InputError('O estoque manual total não pode ultrapassar 100.000 unidades.');
+    await prisma.digitalProduct.update({ where: { id }, data: { manualStock: { increment: quantity } } });
+    try { await Promise.all([refreshProduct(id), refreshSpotifyCatalog()]); } catch { return { message: `${quantity} unidades manuais adicionadas. Salve o produto para atualizar a publicação.` }; }
+    return { message: `${quantity} unidades adicionadas ao estoque manual.` };
+  }
+  if (items.length > 100 || items.some(s => s.length > 10_000)) throw new InputError('Até 100 itens, 10 mil caracteres por item, separados por linha em branco.');
   const key = await storeKey(await prisma.digitalStock.count() === 0);
   const count = await prisma.$transaction(async tx => {
     let added = 0;
@@ -98,30 +109,34 @@ export async function processOrder(body: Record<string, unknown>) {
   const id = String(body.id || '');
   const order = await prisma.digitalOrder.findFirst({ where: { id, guildId: STORE_GUILD_ID } });
   if (!order) throw new InputError('Pedido não encontrado.');
+  let actionMessage = 'Ação registrada no pedido.';
   try {
-    if (body.operation === 'cancel') await cancelOrder(prisma, STORE_OWNER_ID, id);
+    if (body.operation === 'cancel') { await cancelOrder(prisma, STORE_OWNER_ID, id); actionMessage = 'Pedido cancelado.'; }
+    else if (body.operation === 'complete-manual') actionMessage = await completeManualOrder(prisma, STORE_OWNER_ID, id, runtimeTransport());
     else if (body.operation === 'approve' || body.operation === 'retry') {
-      await approveOrder(prisma, STORE_OWNER_ID, id, runtimeTransport(body.failDM === true), await storeKey(), body.operation === 'retry');
+      actionMessage = await approveOrder(prisma, STORE_OWNER_ID, id, runtimeTransport(body.failDM === true), () => storeKey(), body.operation === 'retry');
     } else throw new InputError('Operação inválida.');
   } finally { await Promise.allSettled([refreshProduct(order.productId), refreshSpotifyCatalog()]); }
   const current = await prisma.digitalOrder.findUnique({ where: { id } });
-  if (current?.status === 'delivered' || current?.status === 'cancelled') {
+  if (current?.status === 'delivered' || current?.status === 'cancelled' || current?.status === 'manual_fulfillment') {
     await prisma.checkoutTicket.updateMany({ where: { orderId: id }, data: { status: current.status, activeKey: null } });
   }
-  return { message: runtimeMode() === 'discord-live' ? 'Ação registrada no pedido.' : 'Simulação registrada. Nenhum pagamento, mensagem ou entrega real.' };
+  return { message: runtimeMode() === 'discord-live' ? actionMessage : `Simulação registrada. ${actionMessage}` };
 }
 export async function saveSettings(body: Record<string, unknown>) {
   if (typeof body.paymentInstructions !== 'string' || body.paymentInstructions.length > 1000) throw new InputError('Instruções: até 1000 caracteres.');
   const salesChannelId = typeof body.salesChannelId === 'string' && body.salesChannelId ? body.salesChannelId : null;
-  const supportRoleId = typeof body.supportRoleId === 'string' && body.supportRoleId ? body.supportRoleId : null;
+  const requestedRoles = Array.isArray(body.supportRoleIds) ? body.supportRoleIds : typeof body.supportRoleId === 'string' && body.supportRoleId ? [body.supportRoleId] : [];
+  const supportRoleIds = [...new Set(requestedRoles.filter((role): role is string => typeof role === 'string'))];
   if (salesChannelId) await runtimeTransport().checkChannel(salesChannelId);
-  if (supportRoleId && !/^\d{17,20}$/.test(supportRoleId)) throw new InputError('Selecione um cargo de atendimento válido.');
-  if (supportRoleId && !(await runtimeRoles()).some(role => role.id === supportRoleId)) throw new InputError('O cargo de atendimento não está disponível no servidor.');
+  if (supportRoleIds.length > 10 || supportRoleIds.some(role => !/^\d{17,20}$/.test(role))) throw new InputError('Selecione até dez cargos de atendimento válidos.');
+  const availableRoles = await runtimeRoles();
+  if (supportRoleIds.some(id => !availableRoles.some(role => role.id === id))) throw new InputError('Um dos cargos de atendimento não está disponível no servidor.');
   let pix;
   try {
     pix = validatePixSettings({ enabled: body.pixEnabled === true, key: String(body.pixKey || ''), merchantName: String(body.pixMerchantName || ''), merchantCity: String(body.pixMerchantCity || '') });
   } catch (error) { throw new InputError(error instanceof Error ? error.message : 'Configuração Pix inválida.'); }
-  const data = { paymentInstructions: body.paymentInstructions, salesChannelId, supportRoleId, pixEnabled: pix.enabled, pixKey: pix.key || null, pixMerchantName: pix.merchantName || null, pixMerchantCity: pix.merchantCity || null };
+  const data = { paymentInstructions: body.paymentInstructions, salesChannelId, supportRoleId: null, supportRoleIds: JSON.stringify(supportRoleIds), pixEnabled: pix.enabled, pixKey: pix.key || null, pixMerchantName: pix.merchantName || null, pixMerchantCity: pix.merchantCity || null };
   await prisma.digitalStore.upsert({ where: { guildId: STORE_GUILD_ID }, create: { guildId: STORE_GUILD_ID, ...data }, update: data });
   return { message: runtimeMode() === 'discord-live' ? 'Configurações salvas para o servidor.' : 'Configurações locais salvas.' };
 }
@@ -137,7 +152,7 @@ export async function delivery(id: string) {
 }
 export async function v2(id: string) {
   const p = await requireProduct(id);
-  return productMessage(p, await prisma.digitalStock.count({ where: { productId: id, claimedAt: null } }));
+  return productMessage(p, p.manualStock + await prisma.digitalStock.count({ where: { productId: id, claimedAt: null } }));
 }
 
 export function defaultAntiRaid(): AntiRaidSettings {

@@ -11,6 +11,7 @@ Aplicação Discord e painel privado independentes do empty.
 
 - `/criar` idempotente para categorias, canais, duas calls e cargo de quarentena;
 - catálogo e estoque criptografado em SQLite próprio;
+- estoque numérico para itens entregues manualmente no ticket;
 - pedidos com aprovação manual e entrega privada em arquivo;
 - cobrança Pix estática por pedido, com valor exato, txid, copia e cola e QR Code privado;
 - canal `spotify` com catálogo V2 automático para itens digitais autorizados cadastrados nessa categoria;
@@ -73,7 +74,11 @@ No Discord, execute `/criar` primeiro sem confirmação para ver a prévia e dep
 
 O `/criar` adiciona o canal `spotify` e a categoria privada de atendimentos. No painel, cadastre um produto ativo com a categoria exatamente `spotify` e adicione estoque; o seletor V2 do canal é atualizado automaticamente. Ao escolher um item, o cliente recebe um ticket privado para confirmar ou recusar. A recusa agenda a exclusão do canal; a confirmação gera o Pix e libera a visualização privada do QR Code.
 
-Em `configurações`, escolha o cargo de atendimento usado por **Notificar administrador**. Sem um cargo configurado, o botão notifica o responsável da loja. Use o catálogo somente para códigos, gift cards, assinaturas e outros itens que você esteja autorizado a comercializar; o sistema não deve ser usado para transferir contas ou credenciais de terceiros.
+Em `configurações`, escolha os cargos de atendimento usados por **Notificar administrador**. Os cargos `1548020621760274492` e `1548020929962180658` são carregados como padrão. Se nenhum cargo válido existir, o botão notifica o responsável da loja. Use o catálogo somente para códigos, gift cards, assinaturas e outros itens que você esteja autorizado a comercializar; o sistema não deve ser usado para transferir contas ou credenciais de terceiros.
+
+## Estoque automático e manual
+
+O estoque automático recebe um código autorizado por bloco e envia uma unidade no privado após a aprovação. O estoque manual recebe apenas uma quantidade numérica: ao confirmar o pagamento, uma unidade é baixada e o pedido fica como **entrega manual pendente**. Depois de entregar pelo ticket, use **marcar entrega concluída** no painel. Quando os dois tipos existem no mesmo produto, o estoque automático é consumido primeiro.
 
 ## Pagamento Pix
 

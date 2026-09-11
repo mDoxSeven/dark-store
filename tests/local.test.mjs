@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
-import { assertStoreOwner, APPLICATION_ID, MODE, STORE_GUILD_ID, STORE_LAYOUT } from '../src/store/config.ts';
+import { assertStoreOwner, APPLICATION_ID, DEFAULT_SUPPORT_ROLE_IDS, MODE, STORE_GUILD_ID, STORE_LAYOUT, supportRoleIds } from '../src/store/config.ts';
 import { validateProduct, productMessage } from '../src/store/product.ts';
 import { sealStock, unsealStock } from '../src/store/crypto.ts';
 import { randomBytes } from 'node:crypto';
@@ -27,6 +27,8 @@ test('identidade independente e estrutura prevista são fixas', () => {
   assert.equal(STORE_LAYOUT.flatMap(g => g.channels).filter(c => c.type === 2).length, 2);
   assert.ok(STORE_LAYOUT.flatMap(g => g.channels).some(c => c.name === 'spotify'));
   assert.ok(STORE_LAYOUT.some(g => g.key === 'tickets' && 'private' in g));
+  assert.deepEqual(supportRoleIds(null), [...DEFAULT_SUPPORT_ROLE_IDS]);
+  assert.deepEqual(DEFAULT_SUPPORT_ROLE_IDS, ['1548020621760274492', '1548020929962180658']);
   assert.doesNotThrow(() => assertStoreOwner(STORE_GUILD_ID, '1002774556269891694'));
   assert.throws(() => assertStoreOwner('outro', '1002774556269891694'));
 });
@@ -177,6 +179,20 @@ test('painel local executa fluxo completo sem OAuth, token ou Discord', async ()
     assert.equal((await api(`/api/assets/${asset.id}`, { headers: { cookie } })).status, 200);
     const delivery = await api(`/api/delivery/${order.id}`, { headers: { cookie } });
     assert.equal(await delivery.text(), 'entrega secreta de teste');
+    const manualProduct = await call('/api/products', { channelId: '', product: { ...product, title: 'item manual', category: 'spotify' } });
+    await call('/api/stock', { productId: manualProduct.id, text: '', quantity: 2 });
+    const manualOrder = await call('/api/orders', { productId: manualProduct.id, userId: '100000000000000002' });
+    await call('/api/order-action', { id: manualOrder.id, operation: 'approve', confirmed: true });
+    state = await (await api('/api/state', { headers: { cookie } })).json();
+    assert.equal(state.orders.find(item => item.id === manualOrder.id).status, 'manual_fulfillment');
+    assert.equal(state.products.find(item => item.id === manualProduct.id).manualStock, 1);
+    assert.equal(state.products.find(item => item.id === manualProduct.id).stock, 1);
+    assert.deepEqual(state.settings.supportRoleIds, [...DEFAULT_SUPPORT_ROLE_IDS]);
+    await call('/api/order-action', { id: manualOrder.id, operation: 'complete-manual', confirmed: true });
+    state = await (await api('/api/state', { headers: { cookie } })).json();
+    assert.equal(state.orders.find(item => item.id === manualOrder.id).status, 'delivered');
+    assert.equal(state.orders.find(item => item.id === manualOrder.id).stockId, null);
+    assert.equal((await api(`/api/delivery/${manualOrder.id}`, { headers: { cookie } })).status, 400);
     assert.equal(stderr, '');
   } finally {
     child.kill('SIGTERM');
