@@ -1,4 +1,4 @@
-export const VERIFICATION_BANNER_URL = 'https://raw.githubusercontent.com/mDoxSeven/dark-store/main/public/verificacao-banner-dark.png';
+export const VERIFICATION_BANNER_URL = 'https://raw.githubusercontent.com/mDoxSeven/dark-store/main/public/verificacao-banner-dark-v2.png';
 export const VERIFICATION_BUTTON_ID = 'store:verify';
 
 export function verificationMessage() {

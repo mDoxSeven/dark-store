@@ -57,7 +57,7 @@ test('verificação, catálogos e ticket usam Components V2 e botões cinza', ()
   assert.equal(verification.flags, 32768);
   assert.equal(verificationButton.custom_id, VERIFICATION_BUTTON_ID);
   assert.equal(verificationButton.style, 2);
-  assert.ok(verification.components[0].components.find(component => component.type === 12).items[0].media.url.endsWith('/verificacao-banner-dark.png'));
+  assert.ok(verification.components[0].components.find(component => component.type === 12).items[0].media.url.endsWith('/verificacao-banner-dark-v2.png'));
   assert.match(VERIFICATION_BANNER_URL, /^https:\/\//);
   const id = ticketButtonId('confirm', 'ticket_123456');
   assert.deepEqual(parseTicketButton(id), { action: 'confirm', ticketId: 'ticket_123456' });
