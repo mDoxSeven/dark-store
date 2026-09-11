@@ -13,11 +13,12 @@ import { AntiRaidEngine, respondToRaid, validateAntiRaid, type AntiRaidSettings 
 import { pixQrPng, validatePixSettings } from './store/pix.js';
 import { refreshSpotifyCatalog } from './store/spotify.js';
 import { refreshDiscordCatalog } from './store/discordCatalog.js';
+import { refreshNitroCatalog } from './store/nitroCatalog.js';
 import { refreshVerificationPanel } from './store/verification.js';
 import { runtimeChannels, runtimeDiscordStatus, runtimeGuild, runtimeMode, runtimeRoles, runtimeTransport } from './runtime.js';
 
 export class InputError extends Error {}
-const refreshCatalogs = () => Promise.all([refreshSpotifyCatalog(), refreshDiscordCatalog()]);
+const refreshCatalogs = () => Promise.all([refreshSpotifyCatalog(), refreshDiscordCatalog(), refreshNitroCatalog()]);
 const requireProduct = async (id: string) => {
   const product = await prisma.digitalProduct.findFirst({ where: { id, guildId: STORE_GUILD_ID } });
   if (!product) throw new InputError('Produto não encontrado.');

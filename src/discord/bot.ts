@@ -19,6 +19,8 @@ import { refreshSpotifyCatalog } from '../store/spotify.js';
 import { SPOTIFY_SELECT_ID } from '../store/spotifyMessage.js';
 import { refreshDiscordCatalog } from '../store/discordCatalog.js';
 import { DISCORD_SELECT_ID } from '../store/discordMessage.js';
+import { refreshNitroCatalog } from '../store/nitroCatalog.js';
+import { NITRO_SELECT_ID } from '../store/nitroMessage.js';
 import { refreshVerificationPanel } from '../store/verification.js';
 import { VERIFICATION_BUTTON_ID } from '../store/verificationMessage.js';
 import { welcomeMessage } from '../store/welcomeMessage.js';
@@ -33,7 +35,7 @@ async function handleCriar(interaction: ChatInputCommandInteraction) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const confirmed = interaction.options.getBoolean('confirmar') === true;
   const result = await executeCriar(interaction.guild, interaction.user.id, confirmed);
-  if (!result.preview) await Promise.all([refreshSpotifyCatalog(), refreshDiscordCatalog(), refreshVerificationPanel()]);
+  if (!result.preview) await Promise.all([refreshSpotifyCatalog(), refreshDiscordCatalog(), refreshNitroCatalog(), refreshVerificationPanel()]);
   if (result.preview) {
     const count = result.layout.reduce((total, group) => total + group.channels.length, 0);
     await interaction.editReply(`Prévia pronta: ${result.layout.length} categorias e ${count} canais. Execute novamente marcando **confirmar: Sim**.`);
@@ -42,7 +44,7 @@ async function handleCriar(interaction: ChatInputCommandInteraction) {
   }
 }
 
-async function handleCatalogSelection(interaction: StringSelectMenuInteraction, category: 'spotify' | 'discord') {
+async function handleCatalogSelection(interaction: StringSelectMenuInteraction, category: 'spotify' | 'discord' | 'nitro') {
   if (interaction.guildId !== STORE_GUILD_ID || !interaction.guild) throw new Error('Catálogo fora do servidor autorizado.');
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const productId = interaction.values[0];
@@ -307,6 +309,7 @@ export async function startDiscord(token: string) {
       if (interaction.isChatInputCommand() && interaction.commandName === 'criar') await handleCriar(interaction);
       else if (interaction.isStringSelectMenu() && interaction.customId === SPOTIFY_SELECT_ID) await handleCatalogSelection(interaction, 'spotify');
       else if (interaction.isStringSelectMenu() && interaction.customId === DISCORD_SELECT_ID) await handleCatalogSelection(interaction, 'discord');
+      else if (interaction.isStringSelectMenu() && interaction.customId === NITRO_SELECT_ID) await handleCatalogSelection(interaction, 'nitro');
       else if (interaction.isButton()) {
         const role = parseRoleButton(interaction.customId);
         const ticket = parseTicketButton(interaction.customId);

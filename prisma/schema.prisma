@@ -23,6 +23,9 @@ model DigitalStore {
   discordChannelId         String?
   discordMessageId         String?
   discordPublishUntil      DateTime?
+  nitroChannelId           String?
+  nitroMessageId           String?
+  nitroPublishUntil        DateTime?
   verificationChannelId    String?
   verificationMessageId    String?
   verificationPublishUntil DateTime?

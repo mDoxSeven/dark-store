@@ -16,6 +16,7 @@ Aplicação Discord e painel privado independentes do empty.
 - cobrança Pix estática por pedido, com valor exato, txid, copia e cola e QR Code privado;
 - canal `spotify` com catálogo V2 automático para itens digitais autorizados cadastrados nessa categoria;
 - canal `discord` com a arte cromada aprovada e catálogo V2 próprio;
+- canal `nitro-link` com arte cromada, impulsos entre diamantes e catálogo V2 próprio;
 - entrada protegida por um canal de verificação V2 com arte própria e botão cinza;
 - ticket privado com confirmação, recusa com exclusão automática e botão para notificar o atendimento;
 - encerramento administrativo de tickets concluídos, com liberação do canal de avaliações e convite V2 no privado;
@@ -80,6 +81,8 @@ O `/criar` adiciona o canal `spotify` e a categoria privada de atendimentos. No 
 Em `configurações`, escolha os cargos de atendimento usados por **Notificar administrador**. Os cargos `1548020621760274492` e `1548020929962180658` são carregados como padrão. Se nenhum cargo válido existir, o botão notifica o responsável da loja. Use o catálogo somente para códigos, gift cards, assinaturas e outros itens que você esteja autorizado a comercializar; o sistema não deve ser usado para transferir contas ou credenciais de terceiros.
 
 O mesmo fluxo existe no canal `discord`: cadastre produtos ativos com a categoria exatamente `discord`. Cada produto mantém seu próprio estoque automático e sua própria quantidade manual, sem misturar as unidades de produtos diferentes.
+
+O `/criar` também adiciona o canal `nitro-link`. Produtos ativos com a categoria exatamente `nitro` entram no seletor V2 desse canal e utilizam o mesmo fluxo privado de ticket, Pix e estoque individual. Cadastre somente links, códigos ou benefícios digitais que você esteja autorizado a distribuir.
 
 ## Verificação de entrada
 

@@ -43,6 +43,7 @@ export const STORE_LAYOUT = [
     { key: "accounts", name: "contas", type: 0, readOnly: true },
     { key: "discord", name: "discord", type: 0, readOnly: true },
     { key: "spotify", name: "spotify", type: 0, readOnly: true },
+    { key: "nitro", name: "nitro-link", type: 0, readOnly: true },
     { key: "completed", name: "vendas-realizadas", type: 0, readOnly: true },
     { key: "reviews", name: "avaliacoes", type: 0, readOnly: false, reviewOnly: true, fixedId: REVIEWS_CHANNEL_ID },
   ] },

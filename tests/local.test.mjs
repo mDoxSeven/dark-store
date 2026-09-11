@@ -16,6 +16,7 @@ import { auditActionName, parseRoleButton } from '../src/discord/ids.ts';
 import { buildPixPayload, crc16, pixQrPng, validatePixSettings } from '../src/store/pix.ts';
 import { SPOTIFY_SELECT_ID, spotifyCatalogMessage } from '../src/store/spotifyMessage.ts';
 import { DISCORD_BANNER_URL, DISCORD_SELECT_ID, discordCatalogMessage } from '../src/store/discordMessage.ts';
+import { NITRO_BANNER_URL, NITRO_SELECT_ID, nitroCatalogMessage } from '../src/store/nitroMessage.ts';
 import { VERIFICATION_BANNER_URL, VERIFICATION_BUTTON_ID, verificationMessage } from '../src/store/verificationMessage.ts';
 import { welcomeMessage } from '../src/store/welcomeMessage.ts';
 import { reviewRequestMessage } from '../src/store/reviewMessage.ts';
@@ -31,6 +32,7 @@ test('identidade independente e estrutura prevista são fixas', () => {
   assert.equal(STORE_LAYOUT.flatMap(g => g.channels).filter(c => c.type === 2).length, 2);
   assert.ok(STORE_LAYOUT.flatMap(g => g.channels).some(c => c.name === 'spotify'));
   assert.ok(STORE_LAYOUT.flatMap(g => g.channels).some(c => c.name === 'discord'));
+  assert.ok(STORE_LAYOUT.flatMap(g => g.channels).some(c => c.name === 'nitro-link'));
   assert.ok(STORE_LAYOUT.flatMap(g => g.channels).some(c => c.key === 'verificationChannel'));
   assert.equal(UNVERIFIED_ROLE_ID, '1547683703227154542');
   assert.equal(VERIFIED_ROLE_ID, '1548020246537830520');
@@ -57,6 +59,12 @@ test('verificação, catálogos e ticket usam Components V2 e botões cinza', ()
   assert.equal(discordSelect.custom_id, DISCORD_SELECT_ID);
   assert.ok(discord.components[0].components.find(component => component.type === 12).items[0].media.url.endsWith('/contas-discord-banner-dark.png'));
   assert.match(DISCORD_BANNER_URL, /^https:\/\//);
+  const nitro = nitroCatalogMessage(products);
+  const nitroSelect = nitro.components[0].components.find(component => component.type === 1).components[0];
+  assert.equal(nitroSelect.custom_id, NITRO_SELECT_ID);
+  assert.equal(nitroSelect.options.length, 25);
+  assert.ok(nitro.components[0].components.find(component => component.type === 12).items[0].media.url.endsWith('/nitro-link-banner-dark.png'));
+  assert.match(NITRO_BANNER_URL, /^https:\/\//);
   const verification = verificationMessage();
   const verificationButton = verification.components[0].components.find(component => component.type === 1).components[0];
   assert.equal(verification.flags, 32768);
@@ -191,6 +199,7 @@ test('painel local executa fluxo completo sem OAuth, token ou Discord', async ()
     assert.equal(state.channels.filter(c => c.type === 2).length, 2);
     assert.ok(state.channels.some(c => c.key === 'discord' && c.type === 0));
     assert.ok(state.channels.some(c => c.key === 'spotify' && c.type === 0));
+    assert.ok(state.channels.some(c => c.key === 'nitro' && c.type === 0));
     assert.ok(state.channels.some(c => c.key === 'verificationChannel' && c.type === 0));
     assert.equal(state.channels.find(c => c.key === 'reviews').id, REVIEWS_CHANNEL_ID);
     assert.deepEqual(state.roles, []);

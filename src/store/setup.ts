@@ -104,6 +104,7 @@ export async function setupStore(guild: Guild, actorId: string) {
       verificationChannelId: ids.verificationChannel,
       discordChannelId: ids.discord,
       spotifyChannelId: ids.spotify,
+      nitroChannelId: ids.nitro,
     } });
     const channel = await guild.channels.fetch(ids.shop);
     if (channel?.isTextBased() && "send" in channel && !ids.introMessage) {
