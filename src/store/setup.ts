@@ -1,7 +1,7 @@
 import { ChannelType, OverwriteType, PermissionFlagsBits, type Guild } from "discord.js";
 import { prisma } from "../lib/db.js";
 import {
-  STORE_GUILD_ID, STORE_OWNER_ID, STORE_LAYOUT, UNVERIFIED_ROLE_ID, VERIFIED_ROLE_ID, assertStoreOwner,
+  REVIEW_ROLE_ID, STORE_GUILD_ID, STORE_OWNER_ID, STORE_LAYOUT, UNVERIFIED_ROLE_ID, VERIFIED_ROLE_ID, assertStoreOwner,
 } from "./config.js";
 
 export async function setupStore(guild: Guild, actorId: string) {
@@ -20,16 +20,24 @@ export async function setupStore(guild: Guild, actorId: string) {
     const roles = await guild.roles.fetch();
     const unverified = roles.get(UNVERIFIED_ROLE_ID);
     const verified = roles.get(VERIFIED_ROLE_ID);
+    const reviewer = roles.get(REVIEW_ROLE_ID);
     if (!unverified || unverified.managed || !unverified.editable) {
       throw new Error(`O cargo inicial ${UNVERIFIED_ROLE_ID} não existe ou está acima do cargo do bot.`);
     }
     if (!verified || verified.managed || !verified.editable) {
       throw new Error(`O cargo verificado ${VERIFIED_ROLE_ID} não existe ou está acima do cargo do bot.`);
     }
+    if (!reviewer || reviewer.managed || !reviewer.editable) {
+      throw new Error(`O cargo de avaliação ${REVIEW_ROLE_ID} não existe ou está acima do cargo do bot.`);
+    }
     if (unverified.id === verified.id) throw new Error('Os cargos inicial e verificado precisam ser diferentes.');
     if (unverified.permissions.bitfield !== 0n) {
       await unverified.setPermissions([], 'Cargo inicial sem permissões até a verificação');
       created.push(`Permissões do cargo ${unverified.name}`);
+    }
+    if (reviewer.permissions.bitfield !== 0n) {
+      await reviewer.setPermissions([], 'Cargo usado somente para liberar o canal de avaliações');
+      created.push(`Permissões do cargo ${reviewer.name}`);
     }
     let quarantine = roles.get(ids.quarantineRole);
     if (!quarantine || quarantine.managed) {
@@ -42,7 +50,7 @@ export async function setupStore(guild: Guild, actorId: string) {
     for (const group of STORE_LAYOUT) {
       const privacy = "private" in group && group.private;
       const verification = "verification" in group && group.verification;
-      const permissions = (readOnly: boolean) => [
+      const permissions = (readOnly: boolean, reviewOnly = false) => [
         { id: guild.id, type: OverwriteType.Role,
           allow: verification ? [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory] : [],
           deny: verification ? [PermissionFlagsBits.SendMessages, PermissionFlagsBits.CreatePublicThreads, PermissionFlagsBits.CreatePrivateThreads, PermissionFlagsBits.SendMessagesInThreads, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak] : [PermissionFlagsBits.ViewChannel] },
@@ -50,8 +58,11 @@ export async function setupStore(guild: Guild, actorId: string) {
           allow: verification ? [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory] : [],
           deny: verification ? [PermissionFlagsBits.SendMessages, PermissionFlagsBits.CreatePublicThreads, PermissionFlagsBits.CreatePrivateThreads, PermissionFlagsBits.SendMessagesInThreads, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak] : [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak] },
         { id: verified.id, type: OverwriteType.Role,
-          allow: verification || privacy ? [] : [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.SendMessages, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak],
-          deny: verification || privacy ? [PermissionFlagsBits.ViewChannel] : readOnly ? [PermissionFlagsBits.SendMessages, PermissionFlagsBits.CreatePublicThreads, PermissionFlagsBits.CreatePrivateThreads, PermissionFlagsBits.SendMessagesInThreads] : [] },
+          allow: verification || privacy || reviewOnly ? [] : [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.SendMessages, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak],
+          deny: verification || privacy || reviewOnly ? [PermissionFlagsBits.ViewChannel] : readOnly ? [PermissionFlagsBits.SendMessages, PermissionFlagsBits.CreatePublicThreads, PermissionFlagsBits.CreatePrivateThreads, PermissionFlagsBits.SendMessagesInThreads] : [] },
+        { id: reviewer.id, type: OverwriteType.Role,
+          allow: reviewOnly ? [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.SendMessages] : [],
+          deny: [] },
         { id: quarantine.id, type: OverwriteType.Role, deny: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak] },
         { id: bot.id, type: OverwriteType.Member, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak] },
         { id: STORE_OWNER_ID, type: OverwriteType.Member, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak] },
@@ -65,8 +76,11 @@ export async function setupStore(guild: Guild, actorId: string) {
       }
       await category.permissionOverwrites.set(permissions(false), 'Permissões de entrada e verificação da dark store');
       for (const item of group.channels) {
-        let channel = channels.get(ids[item.key]);
+        const fixedId = 'fixedId' in item ? item.fixedId : null;
+        let channel = fixedId ? channels.get(fixedId) : channels.get(ids[item.key]);
+        if (fixedId && !channel) throw new Error(`O canal configurado ${fixedId} não foi encontrado no servidor.`);
         if (!channel || channel.type !== item.type) {
+          if (fixedId) throw new Error(`O canal configurado ${fixedId} não é um canal de texto válido.`);
           channel = item.type === 2
             ? await guild.channels.create({ name: item.name, type: ChannelType.GuildVoice, parent: category.id, permissionOverwrites: permissions(false), userLimit: item.key === "supportVoice" ? 2 : 0 })
             : await guild.channels.create({ name: item.name, type: ChannelType.GuildText, parent: category.id, permissionOverwrites: permissions(item.readOnly), topic: `Loja • ${item.name} | gerenciado por /criar` });
@@ -75,8 +89,13 @@ export async function setupStore(guild: Guild, actorId: string) {
           created.push(item.name);
         }
         if (channel) {
+          if (ids[item.key] !== channel.id) {
+            ids[item.key] = channel.id;
+            await prisma.digitalStore.update({ where: { guildId: guild.id }, data: { channelsJson: JSON.stringify(ids) } });
+          }
           if (channel.parentId !== category.id) await channel.setParent(category.id, { lockPermissions: false, reason: 'Estrutura da dark store' });
-          await channel.permissionOverwrites.set(permissions(item.readOnly), 'Permissões de entrada e verificação da dark store');
+          const reviewOnly = 'reviewOnly' in item && item.reviewOnly;
+          await channel.permissionOverwrites.set(permissions(item.readOnly, reviewOnly), 'Permissões de entrada, verificação e avaliações da dark store');
         }
       }
     }

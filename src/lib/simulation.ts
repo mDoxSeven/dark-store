@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { Guild } from 'discord.js';
 import { prisma } from './db.js';
-import { APPLICATION_ID, STORE_GUILD_ID, STORE_LAYOUT, UNVERIFIED_ROLE_ID, VERIFIED_ROLE_ID } from '../store/config.js';
+import { APPLICATION_ID, REVIEW_ROLE_ID, REVIEWS_CHANNEL_ID, STORE_GUILD_ID, STORE_LAYOUT, UNVERIFIED_ROLE_ID, VERIFIED_ROLE_ID } from '../store/config.js';
 import type { StoreTransport } from '../store/transport.js';
 import { money } from '../store/product.js';
 
@@ -41,6 +41,7 @@ export function localTransport(failDM = false): StoreTransport {
 // Duck-typed Guild adapter exercising the same /criar handler, entirely in memory/SQLite.
 export async function localGuild(): Promise<Guild> {
   const records = new Map((await localChannels()).map(c => [c.id, c]));
+  if (!records.has(REVIEWS_CHANNEL_ID)) records.set(REVIEWS_CHANNEL_ID, { id: REVIEWS_CHANNEL_ID, key: 'reviews', name: 'avaliacoes', type: 0, readOnly: false, private: false });
   const wrap = (c: { id: string; type: number; parentId?: string | null }) => ({ ...c, isTextBased: () => c.type === 0,
     permissionOverwrites: { edit: async () => {}, set: async () => {} },
     setParent: async (parentId: string) => { c.parentId = parentId; return wrap(c); },
@@ -64,6 +65,7 @@ export async function localGuild(): Promise<Guild> {
   const roleRecords = new Map<string, LocalRole>();
   roleRecords.set(UNVERIFIED_ROLE_ID, makeRole(UNVERIFIED_ROLE_ID, 'Entrada'));
   roleRecords.set(VERIFIED_ROLE_ID, makeRole(VERIFIED_ROLE_ID, 'Verificado'));
+  roleRecords.set(REVIEW_ROLE_ID, makeRole(REVIEW_ROLE_ID, 'Cliente'));
   if (savedIds.quarantineRole) roleRecords.set(savedIds.quarantineRole, makeRole(savedIds.quarantineRole, 'Quarentena'));
   const roles = {
     async fetch() { return roleRecords; },

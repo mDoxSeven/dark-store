@@ -1,10 +1,10 @@
 import { money } from './product.js';
 
-export const ticketButtonId = (action: 'confirm' | 'refuse' | 'notify' | 'qr', ticketId: string) => `store:ticket:${action}:${ticketId}`;
+export const ticketButtonId = (action: 'confirm' | 'refuse' | 'notify' | 'qr' | 'close', ticketId: string) => `store:ticket:${action}:${ticketId}`;
 
 export function parseTicketButton(customId: string) {
-  const match = customId.match(/^store:ticket:(confirm|refuse|notify|qr):([a-zA-Z0-9_-]{10,40})$/);
-  return match ? { action: match[1] as 'confirm' | 'refuse' | 'notify' | 'qr', ticketId: match[2] } : null;
+  const match = customId.match(/^store:ticket:(confirm|refuse|notify|qr|close):([a-zA-Z0-9_-]{10,40})$/);
+  return match ? { action: match[1] as 'confirm' | 'refuse' | 'notify' | 'qr' | 'close', ticketId: match[2] } : null;
 }
 
 export function confirmationTicketMessage(ticket: { id: string; userId: string; productTitle: string; priceCents: number }) {
@@ -16,6 +16,7 @@ export function confirmationTicketMessage(ticket: { id: string; userId: string; 
       { type: 2, style: 2, custom_id: ticketButtonId('confirm', ticket.id), label: 'Confirmar compra' },
       { type: 2, style: 2, custom_id: ticketButtonId('refuse', ticket.id), label: 'Recusar e fechar' },
       { type: 2, style: 2, custom_id: ticketButtonId('notify', ticket.id), label: 'Notificar administrador' },
+      { type: 2, style: 2, custom_id: ticketButtonId('close', ticket.id), label: 'Encerrar pedido' },
     ] },
     { type: 10, content: `-# Atendimento ${ticket.id}` },
   ] }] };
@@ -32,6 +33,7 @@ export function paymentTicketMessage(ticket: { id: string; userId: string; produ
     { type: 1, components: [
       { type: 2, style: 2, custom_id: ticketButtonId('qr', ticket.id), label: 'Visualizar QR Code', disabled: !order.pixPayload },
       { type: 2, style: 2, custom_id: ticketButtonId('notify', ticket.id), label: 'Notificar administrador' },
+      { type: 2, style: 2, custom_id: ticketButtonId('close', ticket.id), label: 'Encerrar pedido' },
     ] },
     { type: 10, content: `-# Pedido ${order.id} · confirmação manual` },
   ] }] };

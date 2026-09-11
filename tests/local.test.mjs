@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
-import { assertStoreOwner, APPLICATION_ID, DEFAULT_SUPPORT_ROLE_IDS, MODE, STORE_GUILD_ID, STORE_LAYOUT, UNVERIFIED_ROLE_ID, VERIFIED_ROLE_ID, supportRoleIds } from '../src/store/config.ts';
+import { assertStoreOwner, APPLICATION_ID, DEFAULT_SUPPORT_ROLE_IDS, MODE, REVIEW_ROLE_ID, REVIEWS_CHANNEL_ID, STORE_GUILD_ID, STORE_LAYOUT, UNVERIFIED_ROLE_ID, VERIFIED_ROLE_ID, supportRoleIds } from '../src/store/config.ts';
 import { validateProduct, productMessage } from '../src/store/product.ts';
 import { sealStock, unsealStock } from '../src/store/crypto.ts';
 import { randomBytes } from 'node:crypto';
@@ -18,6 +18,7 @@ import { SPOTIFY_SELECT_ID, spotifyCatalogMessage } from '../src/store/spotifyMe
 import { DISCORD_BANNER_URL, DISCORD_SELECT_ID, discordCatalogMessage } from '../src/store/discordMessage.ts';
 import { VERIFICATION_BANNER_URL, VERIFICATION_BUTTON_ID, verificationMessage } from '../src/store/verificationMessage.ts';
 import { welcomeMessage } from '../src/store/welcomeMessage.ts';
+import { reviewRequestMessage } from '../src/store/reviewMessage.ts';
 import { confirmationTicketMessage, parseTicketButton, paymentTicketMessage, ticketButtonId } from '../src/store/tickets.ts';
 
 const root = resolve(import.meta.dirname, '..');
@@ -33,6 +34,9 @@ test('identidade independente e estrutura prevista são fixas', () => {
   assert.ok(STORE_LAYOUT.flatMap(g => g.channels).some(c => c.key === 'verificationChannel'));
   assert.equal(UNVERIFIED_ROLE_ID, '1547683703227154542');
   assert.equal(VERIFIED_ROLE_ID, '1548020246537830520');
+  assert.equal(REVIEW_ROLE_ID, '1548068549434544159');
+  assert.equal(REVIEWS_CHANNEL_ID, '1547806201604219015');
+  assert.equal(STORE_LAYOUT.flatMap(g => g.channels).find(c => c.key === 'reviews').fixedId, REVIEWS_CHANNEL_ID);
   assert.ok(STORE_LAYOUT.some(g => g.key === 'tickets' && 'private' in g));
   assert.deepEqual(supportRoleIds(null), [...DEFAULT_SUPPORT_ROLE_IDS]);
   assert.deepEqual(DEFAULT_SUPPORT_ROLE_IDS, ['1548020621760274492', '1548020929962180658']);
@@ -68,14 +72,23 @@ test('verificação, catálogos e ticket usam Components V2 e botões cinza', ()
   assert.ok(welcome.components[0].components.some(component => component.type === 10 && component.content.includes('Membro nº 42')));
   const id = ticketButtonId('confirm', 'ticket_123456');
   assert.deepEqual(parseTicketButton(id), { action: 'confirm', ticketId: 'ticket_123456' });
+  assert.deepEqual(parseTicketButton(ticketButtonId('close', 'ticket_123456')), { action: 'close', ticketId: 'ticket_123456' });
   assert.equal(parseTicketButton('store:ticket:admin:ticket_123456'), null);
   const ticket = { id: 'ticket_123456', userId: '100000000000000001', productTitle: 'Gift card autorizado', priceCents: 1990 };
   const confirmation = confirmationTicketMessage(ticket);
   const buttons = confirmation.components[0].components.find(component => component.type === 1).components;
   assert.ok(buttons.every(button => button.style === 2));
   assert.ok(buttons.some(button => button.custom_id.includes(':notify:')));
+  assert.ok(buttons.some(button => button.custom_id.includes(':close:')));
   const payment = paymentTicketMessage(ticket, { id: 'order_123', pixPayload: '000201PIX' });
   assert.ok(payment.components[0].components.find(component => component.type === 10).content.includes('000201PIX'));
+  assert.ok(payment.components[0].components.find(component => component.type === 1).components.some(button => button.custom_id.includes(':close:')));
+  const review = reviewRequestMessage({ id: 'order_123', productTitle: 'Gift card autorizado', priceCents: 1990 }, STORE_GUILD_ID, REVIEWS_CHANNEL_ID);
+  const reviewButton = review.components[0].components.find(component => component.type === 1).components[0];
+  assert.equal(review.flags, 32768);
+  assert.equal(reviewButton.style, 5);
+  assert.equal(reviewButton.url, `https://discord.com/channels/${STORE_GUILD_ID}/${REVIEWS_CHANNEL_ID}`);
+  assert.ok(review.components[0].components.some(component => component.type === 10 && component.content.includes('10/10')));
 });
 
 test('produto V2 é validado e estoque criptografado é autenticado', () => {
@@ -179,6 +192,7 @@ test('painel local executa fluxo completo sem OAuth, token ou Discord', async ()
     assert.ok(state.channels.some(c => c.key === 'discord' && c.type === 0));
     assert.ok(state.channels.some(c => c.key === 'spotify' && c.type === 0));
     assert.ok(state.channels.some(c => c.key === 'verificationChannel' && c.type === 0));
+    assert.equal(state.channels.find(c => c.key === 'reviews').id, REVIEWS_CHANNEL_ID);
     assert.deepEqual(state.roles, []);
     const channelId = state.channels.find(c => c.key === 'accounts').id;
     const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');

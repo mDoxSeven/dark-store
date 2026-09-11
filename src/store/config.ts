@@ -10,6 +10,8 @@ export const STORE_OWNER_ID = configuredId('DARK_OWNER_ID', '1002774556269891694
 export const DEFAULT_SUPPORT_ROLE_IDS = ['1548020621760274492', '1548020929962180658'] as const;
 export const UNVERIFIED_ROLE_ID = configuredId('DARK_UNVERIFIED_ROLE_ID', '1547683703227154542');
 export const VERIFIED_ROLE_ID = configuredId('DARK_VERIFIED_ROLE_ID', '1548020246537830520');
+export const REVIEW_ROLE_ID = configuredId('DARK_REVIEW_ROLE_ID', '1548068549434544159');
+export const REVIEWS_CHANNEL_ID = configuredId('DARK_REVIEWS_CHANNEL_ID', '1547806201604219015');
 
 export function supportRoleIds(settings: { supportRoleIds?: string | null; supportRoleId?: string | null } | null | undefined) {
   let saved: unknown = [];
@@ -42,7 +44,7 @@ export const STORE_LAYOUT = [
     { key: "discord", name: "discord", type: 0, readOnly: true },
     { key: "spotify", name: "spotify", type: 0, readOnly: true },
     { key: "completed", name: "vendas-realizadas", type: 0, readOnly: true },
-    { key: "reviews", name: "avaliacoes", type: 0, readOnly: false },
+    { key: "reviews", name: "avaliacoes", type: 0, readOnly: false, reviewOnly: true, fixedId: REVIEWS_CHANNEL_ID },
   ] },
   { key: "community", name: "COMUNIDADE • SUPORTE", channels: [
     { key: "chat", name: "conversa", type: 0, readOnly: false },

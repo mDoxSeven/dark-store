@@ -18,6 +18,7 @@ Aplicação Discord e painel privado independentes do empty.
 - canal `discord` com a arte cromada aprovada e catálogo V2 próprio;
 - entrada protegida por um canal de verificação V2 com arte própria e botão cinza;
 - ticket privado com confirmação, recusa com exclusão automática e botão para notificar o atendimento;
+- encerramento administrativo de tickets concluídos, com liberação do canal de avaliações e convite V2 no privado;
 - editor completo de Components V2 com Markdown, galeria, thumbnail, divisores e anexos;
 - botões V2 de link ou cargo, com adicionar, remover ou alternar;
 - anti-raid para rajadas de entrada, contas novas e ações destrutivas no Audit Log;
@@ -85,6 +86,8 @@ O mesmo fluxo existe no canal `discord`: cadastre produtos ativos com a categori
 O `/criar` valida os cargos `1547683703227154542` (entrada pendente) e `1548020246537830520` (membro verificado), cria o canal `verificacao`, aplica as permissões da estrutura e publica o painel V2. Novos membros recebem automaticamente o cargo de entrada e enxergam apenas a verificação. Ao clicar em **Verificar**, o bot adiciona o cargo verificado, remove o cargo inicial e libera os canais públicos. Os dois cargos precisam existir e ficar abaixo do cargo do bot.
 
 Na primeira verificação, o bot também publica automaticamente no canal `boas-vindas` um Components V2 com a menção, o avatar e a posição do novo membro. Cliques repetidos não duplicam o anúncio.
+
+O botão cinza **Encerrar pedido** fica nos tickets e somente administradores podem usá-lo. Ele exige que o pedido esteja entregue, adiciona o cargo `1548068549434544159`, agenda o fechamento do ticket e envia ao comprador um V2 privado convidando para uma avaliação `10/10` no canal `1547806201604219015`. Pedidos recusados, pendentes ou cancelados não recebem o cargo. O `/criar` valida o cargo e restringe o canal de avaliações aos membros que já concluíram uma compra.
 
 ## Estoque automático e manual
 

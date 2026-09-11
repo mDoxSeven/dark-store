@@ -8,7 +8,7 @@ import { AntiRaidEngine, respondToRaid, type AntiRaidResponder } from '../antiRa
 import { criarCommand, executeCriar } from '../bot/criar.js';
 import { configureDiscordRuntime } from '../runtime.js';
 import {
-  APPLICATION_ID, STORE_GUILD_ID, STORE_OWNER_ID, UNVERIFIED_ROLE_ID, VERIFIED_ROLE_ID, supportRoleIds,
+  APPLICATION_ID, REVIEW_ROLE_ID, REVIEWS_CHANNEL_ID, STORE_GUILD_ID, STORE_OWNER_ID, UNVERIFIED_ROLE_ID, VERIFIED_ROLE_ID, supportRoleIds,
 } from '../store/config.js';
 import { createOrder } from '../store/orders.js';
 import { getAntiRaidSettings } from '../service.js';
@@ -22,6 +22,7 @@ import { DISCORD_SELECT_ID } from '../store/discordMessage.js';
 import { refreshVerificationPanel } from '../store/verification.js';
 import { VERIFICATION_BUTTON_ID } from '../store/verificationMessage.js';
 import { welcomeMessage } from '../store/welcomeMessage.js';
+import { reviewRequestMessage } from '../store/reviewMessage.js';
 import { confirmationTicketMessage, parseTicketButton, paymentTicketMessage } from '../store/tickets.js';
 const errorText = (error: unknown) => error instanceof Error ? error.message.slice(0, 1500) : 'Ação não concluída.';
 
@@ -97,7 +98,10 @@ async function handleTicketButton(interaction: ButtonInteraction, parsed: NonNul
   if (interaction.guildId !== STORE_GUILD_ID || !interaction.guild) throw new Error('Atendimento fora do servidor autorizado.');
   const ticket = await prisma.checkoutTicket.findFirst({ where: { id: parsed.ticketId, guildId: STORE_GUILD_ID } });
   if (!ticket) throw new Error('Atendimento não encontrado.');
-  if (ticket.userId !== interaction.user.id && interaction.user.id !== STORE_OWNER_ID) throw new Error('Somente o cliente deste atendimento pode usar esse botão.');
+  const actor = await interaction.guild.members.fetch(interaction.user.id);
+  const isAdmin = interaction.user.id === STORE_OWNER_ID || actor.permissions.has(PermissionFlagsBits.Administrator);
+  if (parsed.action === 'close' && !isAdmin) throw new Error('Somente administradores podem encerrar um pedido.');
+  if (parsed.action !== 'close' && ticket.userId !== interaction.user.id && interaction.user.id !== STORE_OWNER_ID) throw new Error('Somente o cliente deste atendimento pode usar esse botão.');
   if (ticket.channelId !== interaction.channelId) throw new Error('Este botão não pertence a este atendimento.');
   const ticketChannel = interaction.channel;
   if (!ticketChannel?.isSendable()) throw new Error('Canal do atendimento indisponível.');
@@ -134,6 +138,43 @@ async function handleTicketButton(interaction: ButtonInteraction, parsed: NonNul
     await interaction.editReply({ content: `QR Code do pedido \`${order.id}\`.`, files: [{ attachment: await pixQrPng(order.pixPayload), name: `pix-${order.id}.png` }] });
     return;
   }
+  if (parsed.action === 'close') {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    if (!ticket.orderId) throw new Error('Este atendimento ainda não possui um pedido confirmado.');
+    const order = await prisma.digitalOrder.findFirst({ where: { id: ticket.orderId, guildId: STORE_GUILD_ID } });
+    if (!order || order.status !== 'delivered') throw new Error('O pedido precisa estar entregue antes de ser encerrado como concluído. Pedidos cancelados não liberam avaliação.');
+    const claimed = await prisma.checkoutTicket.updateMany({
+      where: { id: ticket.id, status: ticket.status, deleteAt: null },
+      data: { status: 'closing_completed', activeKey: null },
+    });
+    if (!claimed.count) throw new Error('Este atendimento já está sendo encerrado.');
+    try {
+      const settings = await prisma.digitalStore.findUnique({ where: { guildId: STORE_GUILD_ID } });
+      const ids = JSON.parse(settings?.channelsJson || '{}') as Record<string, string>;
+      const reviewsChannelId = ids.reviews || REVIEWS_CHANNEL_ID;
+      const [reviewRole, reviewsChannel, buyer] = await Promise.all([
+        interaction.guild.roles.fetch(REVIEW_ROLE_ID),
+        interaction.guild.channels.fetch(reviewsChannelId),
+        interaction.guild.members.fetch(ticket.userId),
+      ]);
+      if (!reviewRole || reviewRole.managed || !reviewRole.editable) throw new Error('O cargo de avaliação não existe ou está acima do cargo do bot.');
+      if (!reviewsChannel?.isTextBased()) throw new Error('O canal de avaliações configurado não está disponível.');
+      if (!buyer.roles.cache.has(reviewRole.id)) await buyer.roles.add(reviewRole, `Pedido ${order.id} concluído`);
+      let dmSent = true;
+      try {
+        await buyer.send(reviewRequestMessage(order, interaction.guild.id, reviewsChannel.id) as MessageCreateOptions);
+      } catch {
+        dmSent = false;
+      }
+      await prisma.checkoutTicket.update({ where: { id: ticket.id }, data: { status: 'closed_completed', deleteAt: new Date(Date.now() + 10_000) } });
+      await ticketChannel.send({ content: `<@${ticket.userId}>, pedido encerrado como concluído. O acesso às avaliações foi liberado.`, allowedMentions: { users: [ticket.userId] } });
+      await interaction.editReply(dmSent ? 'Pedido encerrado. O cargo foi liberado e o V2 de avaliação foi enviado no privado.' : 'Pedido encerrado e cargo liberado, mas o comprador está com o privado fechado.');
+      return;
+    } catch (error) {
+      await prisma.checkoutTicket.updateMany({ where: { id: ticket.id, status: 'closing_completed' }, data: { status: ticket.status } }).catch(() => {});
+      throw error;
+    }
+  }
   const now = Date.now();
   if ((notifyCooldowns.get(ticket.id) || 0) > now) throw new Error('O administrador já foi notificado. Aguarde dois minutos.');
   notifyCooldowns.set(ticket.id, now + 120_000);
@@ -149,7 +190,7 @@ async function sweepClosedTickets(client: Client) {
   const due = await prisma.checkoutTicket.findMany({ where: { guildId: STORE_GUILD_ID, deleteAt: { lte: new Date() } }, take: 20 });
   for (const ticket of due) {
     const channel = await client.channels.fetch(ticket.channelId).catch(() => null);
-    if (channel && 'delete' in channel) await channel.delete('Atendimento recusado pelo cliente').catch(() => {});
+    if (channel && 'delete' in channel) await channel.delete(ticket.status === 'closed_completed' ? 'Pedido concluído pela equipe' : 'Atendimento recusado ou encerrado').catch(() => {});
     await prisma.checkoutTicket.update({ where: { id: ticket.id }, data: { status: 'closed', activeKey: null, deleteAt: null } });
   }
 }
