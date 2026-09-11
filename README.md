@@ -1,24 +1,99 @@
-# dark store — laboratório independente
+# dark store
 
-Projeto separado do empty. Aplicação prevista `1547707174254280794`, servidor previsto `1547613908016038032`. Esta entrega funciona **somente localmente**: não lê token, não abre Gateway, não registra comandos e não chama a API do Discord.
+Aplicação Discord e painel privado independentes do empty.
 
-Inclui:
+- aplicação: `1547707174254280794`;
+- servidor exclusivo: `1547613908016038032`;
+- responsável: `1002774556269891694`;
+- painel: `127.0.0.1:3010`, acessível remotamente somente por túnel SSH.
 
-- painel próprio com identidade cromada `dark`;
-- login local por senha, sem OAuth;
-- simulação idempotente de `/criar`, com categorias, canais e duas calls fictícias;
-- editor completo de Components V2, separado do editor de produtos;
-- título, Markdown, cor, rodapé, galeria, thumbnail, divisores e espaçamento;
-- anexos PNG, JPEG, WEBP ou GIF de até 7 MB, validados pela assinatura real do arquivo;
-- até cinco botões de link ou cargo, com cor e ações adicionar, remover e alternar;
-- laboratório anti-raid configurável para rajada de entradas, idade mínima e ações destrutivas;
-- lista de usuários confiáveis, resposta simulada e histórico de incidentes;
-- editor de produtos e prévia de Components V2;
-- estoque AES-256-GCM em banco próprio;
-- pedidos, confirmação, falha de DM e entrega simulados;
-- testes ponta a ponta sem tráfego para o Discord.
+## Recursos
 
-## Iniciar localmente
+- `/criar` idempotente para categorias, canais, duas calls e cargo de quarentena;
+- catálogo e estoque criptografado em SQLite próprio;
+- pedidos com aprovação manual e entrega privada em arquivo;
+- editor completo de Components V2 com Markdown, galeria, thumbnail, divisores e anexos;
+- botões V2 de link ou cargo, com adicionar, remover ou alternar;
+- anti-raid para rajadas de entrada, contas novas e ações destrutivas no Audit Log;
+- quarentena, expulsão ou banimento configuráveis;
+- dono e o próprio bot protegidos das respostas automáticas;
+- simulador anti-raid local para validar os limites sem punir membros.
+
+## Configurar o Discord
+
+No Discord Developer Portal, habilite `Guild Install`, os escopos `bot` e `applications.commands`, e o `Server Members Intent`. Na primeira instalação use `Administrator`; depois que a estrutura estiver pronta, reduza as permissões com cuidado.
+
+O bot valida no início se o token pertence à aplicação esperada, se o dono está no servidor e se possui as permissões necessárias. O comando é registrado somente no servidor configurado.
+
+## Configurar a VPS
+
+```bash
+cd /root
+git clone https://github.com/mDoxSeven/dark-store.git
+cd /root/dark-store
+
+cp .env.example .env
+nano .env
+chmod 600 .env
+```
+
+Preencha `DARK_DISCORD_TOKEN` no `.env` diretamente na VPS. Nunca publique esse arquivo.
+
+```bash
+npm ci --no-audit --no-fund
+npm run setup
+npm run admin:create
+NODE_OPTIONS=--max-old-space-size=384 npm run build
+pm2 start ecosystem.config.cjs --only dark-store
+pm2 save
+```
+
+Guarde a senha impressa por `admin:create`; ela não será exibida novamente.
+
+Confira:
+
+```bash
+pm2 status
+pm2 logs dark-store --lines 80 --nostream
+curl http://127.0.0.1:3010/api/health
+```
+
+Resultado esperado:
+
+```json
+{"status":"ok","database":"connected","discord":"connected"}
+```
+
+No Discord, execute `/criar` primeiro sem confirmação para ver a prévia e depois com `confirmar: Sim`. O comando não remove canais existentes e mantém os IDs criados no banco.
+
+## Acessar o painel
+
+No computador do administrador:
+
+```powershell
+ssh -L 3010:127.0.0.1:3010 root@143.198.127.172
+```
+
+Abra `http://127.0.0.1:3010`. Não exponha a porta `3010` diretamente à internet.
+
+## Anti-raid
+
+O `/criar` gera o cargo `Quarentena`, aplica bloqueios aos canais gerenciados e salva seu ID. A proteção nasce desativada: revise no painel o canal de logs, limites, lista confiável e resposta antes de ativar.
+
+O bot observa entradas e eventos destrutivos de canal, cargo, banimento e webhook. Ações do dono, do proprietário do servidor e do próprio bot são ignoradas. O cargo do bot precisa permanecer acima dos cargos que ele gerencia.
+
+## Dados privados
+
+- `data/store.db`: produtos, pedidos, painéis e configurações;
+- `data/stock.key`: chave do estoque;
+- `data/admin.json`: credencial do painel;
+- `data/assets`: imagens anexadas pelo editor.
+
+Todos são ignorados pelo Git. Para recuperar o estoque é necessário guardar juntos o banco e `stock.key` em backup privado.
+
+## Desenvolvimento local
+
+Sem token, deixe `DARK_REQUIRE_DISCORD=false` e execute:
 
 ```powershell
 npm install
@@ -26,25 +101,6 @@ npm run setup
 npm run admin:create
 npm run dev
 ```
-
-Abra `http://127.0.0.1:3010` e use a senha impressa uma única vez por `admin:create`. O servidor recusa conexões fora do loopback. Para acessar de outra máquina no futuro, use um túnel SSH até `127.0.0.1`; não altere para `0.0.0.0` sem HTTPS, proxy confiável e revisão de segurança.
-
-`npm run admin:create` não substitui uma senha existente. Para uma recuperação futura, deve existir um procedimento autenticado de rotação; apagar `data/admin.json` manualmente não faz parte da operação normal.
-
-## Dados
-
-- `data/store.db`: banco exclusivo da dark store;
-- `data/stock.key`: chave criada ao inserir o primeiro estoque;
-- `data/admin.json`: hash e salt da senha administrativa;
-- `data/assets`: anexos locais do editor V2.
-
-Esses arquivos são ignorados pelo Git. Guarde backups privados do banco e da chave; um sem o outro não recupera estoque. Nenhum dado do empty é importado automaticamente.
-
-Cada bloco do estoque representa uma entrega. Separe itens por uma linha em branco. Painéis e produtos V2 são armazenados em `LocalMessage`, sem postagem externa. Os IDs de cargos são preenchidos manualmente enquanto o laboratório estiver desconectado. Pedidos usam IDs fictícios e não representam pagamentos.
-
-## Escopo do anti-raid
-
-O mecanismo detecta rajadas de entrada, contas abaixo da idade mínima e sequências de ações destrutivas. As opções de quarentena, expulsão e banimento são simuladas por uma interface interna e registradas no histórico. **Nenhuma punição é aplicada no Discord nesta fase.** A proteção ao vivo exige uma integração futura com Gateway, Audit Log, permissões mínimas e um adaptador de resposta testado no servidor isolado.
 
 ## Verificar
 
@@ -54,5 +110,3 @@ npm run build
 node --check public/app.js
 npm test
 ```
-
-Quando houver uma decisão posterior de integrar a aplicação ao Discord, isso deve ser uma etapa separada: credenciais próprias, registro controlado, permissões mínimas e testes em ambiente isolado. Este projeto não contém esse ativador.

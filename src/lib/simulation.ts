@@ -18,12 +18,14 @@ export function localTransport(failDM = false): StoreTransport {
     async checkChannel(id) {
       if (!(await localChannels()).some(c => c.id === id && c.type === 0)) throw new Error('Escolha um canal de texto da estrutura local.');
     },
-    async publish(channelId, messageId, body) {
+    async publish(channelId, messageId, body, files = []) {
       await this.checkChannel(channelId);
       const id = messageId || randomUUID();
-      await prisma.localMessage.upsert({ where: { id }, create: { id, channelId, body: JSON.stringify(body) }, update: { body: JSON.stringify(body) } });
+      const serialized = JSON.stringify({ ...body, localFiles: files.map(file => file.name) });
+      await prisma.localMessage.upsert({ where: { id }, create: { id, channelId, body: serialized }, update: { body: serialized } });
       return id;
     },
+    async delete(_channelId, messageId) { await prisma.localMessage.deleteMany({ where: { id: messageId } }); },
     async deliver(_userId, orderId, _payload) {
       if (failDM) throw new Error('Falha de DM simulada');
       // Never write private stock to messages/logs. A receipt identifies the simulation only.
@@ -40,6 +42,7 @@ export function localTransport(failDM = false): StoreTransport {
 export async function localGuild(): Promise<Guild> {
   const records = new Map((await localChannels()).map(c => [c.id, c]));
   const wrap = (c: { id: string; type: number }) => ({ ...c, isTextBased: () => c.type === 0,
+    permissionOverwrites: { edit: async () => {} },
     send: async (body: object) => ({ id: await localTransport().publish(c.id, null, body) }) });
   const channels = {
     async fetch(id?: string) { return id ? (records.has(id) ? wrap(records.get(id)!) : null) : new Map([...records].map(([key, value]) => [key, wrap(value)])); },
@@ -50,5 +53,16 @@ export async function localGuild(): Promise<Guild> {
       return wrap(channel);
     }
   };
-  return { id: STORE_GUILD_ID, channels, members: { fetchMe: async () => ({ id: APPLICATION_ID, permissions: { has: () => true } }) } } as unknown as Guild;
+  const savedStore = await prisma.digitalStore.findUnique({ where: { guildId: STORE_GUILD_ID } });
+  const savedIds = JSON.parse(savedStore?.channelsJson || '{}') as Record<string, string>;
+  const roleRecords = new Map<string, { id: string; managed: boolean }>();
+  if (savedIds.quarantineRole) roleRecords.set(savedIds.quarantineRole, { id: savedIds.quarantineRole, managed: false });
+  const roles = {
+    async fetch() { return roleRecords; },
+    async create() {
+      const id = (1_700_000_000_000_000_000n + BigInt('0x' + randomBytes(6).toString('hex'))).toString();
+      const role = { id, managed: false }; roleRecords.set(id, role); return role;
+    }
+  };
+  return { id: STORE_GUILD_ID, channels, roles, members: { fetchMe: async () => ({ id: APPLICATION_ID, permissions: { has: () => true } }) } } as unknown as Guild;
 }

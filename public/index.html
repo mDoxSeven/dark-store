@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>dark store · laboratório local</title>
+  <title>dark store · control center</title>
   <link rel="stylesheet" href="/styles.css">
   <link rel="stylesheet" href="/modules.css">
 </head>
@@ -11,9 +11,9 @@
   <main id="login" class="login-shell" hidden>
     <section class="login-card">
       <img src="/brand/dark.png" alt="dark" class="login-logo">
-      <p class="eyebrow">LABORATÓRIO LOCAL</p>
+      <p class="eyebrow">CONTROL CENTER</p>
       <h1>painel da loja</h1>
-      <p>Esta versão não entra no Discord e não usa credenciais do empty.</p>
+      <p>Painel privado e independente da dark store.</p>
       <form id="login-form">
         <label>Senha local<input id="password" type="password" autocomplete="current-password" required></label>
         <button>entrar</button>
@@ -25,7 +25,7 @@
   <div id="app" hidden>
     <header>
       <div class="brand"><img src="/brand/dark.png" alt="dark"><div><strong>dark store</strong><small>LOCAL CONTROL</small></div></div>
-      <div class="local-pill"><i></i> simulação local</div>
+      <div id="runtime-pill" class="local-pill"><i></i> verificando conexão</div>
       <button id="logout" class="ghost">sair</button>
     </header>
     <div class="shell">
@@ -35,7 +35,7 @@
         <button data-view="products" class="nav">produtos</button>
         <button data-view="v2" class="nav">editor V2</button>
         <button data-view="security" class="nav">anti-raid</button>
-        <button data-view="orders" class="nav">pedidos de teste</button>
+        <button data-view="orders" class="nav">pedidos</button>
         <button data-view="settings" class="nav">configurações</button>
         <div class="identity"><small>Aplicação</small><code>1547707174254280794</code><small>Servidor previsto</small><code>1547613908016038032</code></div>
       </aside>
@@ -43,9 +43,9 @@
         <div id="notice" class="notice" hidden></div>
 
         <section class="view active" data-page="overview">
-          <div class="hero"><div><p class="eyebrow">DARK STORE</p><h1>estrutura da loja</h1><p>Revise e simule o comando antes de qualquer integração real.</p></div><span>offline-first</span></div>
+          <div class="hero"><div><p class="eyebrow">DARK STORE</p><h1>estrutura da loja</h1><p>Revise a estrutura e execute somente no servidor autorizado.</p></div><span>controle privado</span></div>
           <div class="metrics"><article><small>produtos</small><strong id="metric-products">0</strong></article><article><small>estoque disponível</small><strong id="metric-stock">0</strong></article><article><small>pedidos</small><strong id="metric-orders">0</strong></article><article><small>V2 locais</small><strong id="metric-messages">0</strong></article></div>
-          <article class="card"><div class="card-title"><div><p class="eyebrow">COMANDO /CRIAR</p><h2>estrutura prevista</h2></div><div class="actions"><button id="preview-setup" class="ghost">visualizar</button><button id="confirm-setup">simular criação</button></div></div><p>Não remove canais. A simulação grava apenas IDs fictícios no banco local.</p><div id="layout" class="layout-grid"></div></article>
+          <article class="card"><div class="card-title"><div><p class="eyebrow">COMANDO /CRIAR</p><h2>estrutura prevista</h2></div><div class="actions"><button id="preview-setup" class="ghost">visualizar</button><button id="confirm-setup">criar estrutura</button></div></div><p>Não remove canais existentes e não duplica os canais já registrados.</p><div id="layout" class="layout-grid"></div></article>
         </section>
 
         <section class="view" data-page="products">
@@ -57,12 +57,12 @@
                 <input id="product-id" type="hidden">
                 <div class="two"><label>Título<input id="title" maxlength="100" required></label><label>Categoria<input id="category" maxlength="60"></label></div>
                 <label>Descrição<textarea id="description" maxlength="2400" rows="5"></textarea></label>
-                <div class="two"><label>Preço em centavos<input id="price" type="number" min="1" max="100000000" step="1" required></label><label>Canal local<select id="channel"><option value="">rascunho sem canal</option></select></label></div>
+                <div class="two"><label>Preço em centavos<input id="price" type="number" min="1" max="100000000" step="1" required></label><label>Canal de publicação<select id="channel"><option value="">rascunho sem canal</option></select></label></div>
                 <label>Imagem pública HTTPS<input id="image" type="url" maxlength="2000"></label>
                 <div class="two"><label>Texto do botão<input id="button-label" maxlength="40"></label><label>Cor lateral<input id="accent" type="color"></label></div>
                 <label>Rodapé<input id="footer" maxlength="300"></label>
                 <div class="checks"><label><input id="divider" type="checkbox"> divisória</label><label><input id="active" type="checkbox"> produto ativo</label></div>
-                <button>salvar produto e atualizar V2 local</button>
+                <button>salvar produto e atualizar V2</button>
               </form>
               <div id="preview" class="v2-preview"></div>
               <form id="stock-form">
@@ -81,7 +81,7 @@
             <article class="card editor">
               <form id="v2-form">
                 <input id="v2-id" type="hidden"><input id="v2-asset" type="hidden">
-                <div class="two"><label>Nome interno<input id="v2-name" maxlength="60" required></label><label>Canal local<select id="v2-channel" required><option value="">selecione</option></select></label></div>
+                <div class="two"><label>Nome interno<input id="v2-name" maxlength="60" required></label><label>Canal de publicação<select id="v2-channel" required><option value="">selecione</option></select></label></div>
                 <label>Título do Text Display<input id="v2-title" maxlength="200"></label>
                 <label>Conteúdo Markdown<textarea id="v2-description" maxlength="3700" rows="8"></textarea><small id="v2-count">0/3700</small></label>
                 <div class="two"><label>Cor lateral<input id="v2-color" type="color"></label><label>Rodapé<input id="v2-footer" maxlength="500"></label></div>
@@ -93,7 +93,7 @@
                 <label class="check"><input id="v2-divider" type="checkbox"> exibir separadores</label>
                 <div class="button-editor-head"><div><strong>botões interativos</strong><small>links ou cargos · até cinco</small></div><button id="add-v2-button" type="button" class="ghost">adicionar botão</button></div>
                 <div id="v2-buttons" class="button-editor"></div>
-                <div class="actions"><button id="remove-v2" type="button" class="danger" hidden>excluir painel</button><button>salvar e sincronizar V2 local</button></div>
+                <div class="actions"><button id="remove-v2" type="button" class="danger" hidden>excluir painel</button><button>salvar e sincronizar V2</button></div>
               </form>
               <div id="v2-preview" class="discord-preview"></div>
             </article>
@@ -101,36 +101,37 @@
         </section>
 
         <section class="view" data-page="security">
-          <div class="page-title"><div><p class="eyebrow">PROTEÇÃO</p><h1>anti-raid</h1></div><span class="local-pill"><i></i> motor local</span></div>
+          <div class="page-title"><div><p class="eyebrow">PROTEÇÃO</p><h1>anti-raid</h1></div><span class="local-pill"><i></i> configuração protegida</span></div>
           <div class="security-grid">
             <article class="card"><form id="raid-form">
-              <label class="switch"><input id="raid-enabled" type="checkbox"> ativar proteção quando houver integração</label>
+              <label class="switch"><input id="raid-enabled" type="checkbox"> ativar proteção</label>
               <h3>Entrada em massa</h3><div class="three"><label>Entradas para disparar<input id="raid-join-limit" type="number" min="3" max="100"></label><label>Janela em segundos<input id="raid-join-window" type="number" min="5" max="300"></label><label>Idade mínima da conta (horas)<input id="raid-age" type="number" min="0" max="8760"></label></div>
               <h3>Ações destrutivas</h3><div class="two"><label>Ações para disparar<input id="raid-destroy-limit" type="number" min="2" max="20"></label><label>Janela em segundos<input id="raid-destroy-window" type="number" min="5" max="300"></label></div>
-              <div class="two"><label>Resposta<select id="raid-action"><option value="QUARANTINE">quarentena</option><option value="KICK">expulsar</option><option value="BAN">banir</option></select></label><label>ID do cargo de quarentena<input id="raid-role" pattern="[0-9]{17,20}"></label></div>
-              <label>Canal local de registros<select id="raid-log"><option value="">sem canal</option></select></label>
+              <div class="two"><label>Resposta<select id="raid-action"><option value="QUARANTINE">quarentena</option><option value="KICK">expulsar</option><option value="BAN">banir</option></select></label><label>Cargo de quarentena<select id="raid-role"><option value="">selecione</option></select></label></div>
+              <label>Canal de registros<select id="raid-log"><option value="">sem canal</option></select></label>
               <label>IDs confiáveis<textarea id="raid-trusted" rows="4" placeholder="Separe por vírgula, espaço ou linha"></textarea><small>Administradores que não entram no contador destrutivo.</small></label>
               <button>salvar anti-raid</button>
             </form></article>
             <article class="card"><h2>simulador seguro</h2><p>Exercita as regras sem remover, expulsar ou banir ninguém.</p><form id="raid-sim-form"><label>Evento<select id="raid-sim-type"><option value="join">entrada em massa</option><option value="destructive">ações destrutivas</option></select></label><label>Quantidade<input id="raid-sim-count" type="number" min="1" max="100" value="8"></label><label class="join-only">Idade das contas simuladas (horas)<input id="raid-sim-age" type="number" min="0" value="1"></label><label class="destroy-only" hidden>ID do executor<input id="raid-sim-actor" value="100000000000000002" pattern="[0-9]{17,20}"></label><label class="destroy-only" hidden>Tipo de ação<select id="raid-sim-action"><option>CHANNEL_DELETE</option><option>ROLE_DELETE</option><option>MEMBER_BAN_ADD</option><option>WEBHOOK_CREATE</option></select></label><button>executar simulação</button></form></article>
           </div>
-          <article class="card"><div class="card-title"><h2>incidentes locais</h2><small>últimos 100</small></div><div id="incidents"></div></article>
+          <article class="card"><div class="card-title"><h2>incidentes</h2><small>últimos 100</small></div><div id="incidents"></div></article>
         </section>
 
         <section class="view" data-page="orders">
-          <div class="page-title"><div><p class="eyebrow">FLUXO DE TESTE</p><h1>pedidos simulados</h1></div><button id="refresh-orders" class="ghost">atualizar</button></div>
-          <article class="card"><form id="order-form" class="inline-form"><label>Produto<select id="order-product"></select></label><label>ID fictício do cliente<input id="order-user" value="100000000000000001" pattern="[0-9]{17,20}"></label><button>criar pedido de teste</button></form><p class="warning">Nenhuma cobrança, DM ou mensagem real é enviada. A confirmação consome estoque no banco de teste; a entrega pode ser baixada localmente.</p></article>
+          <div class="page-title"><div><p class="eyebrow">OPERAÇÃO</p><h1>pedidos</h1></div><button id="refresh-orders" class="ghost">atualizar</button></div>
+          <article class="card"><form id="order-form" class="inline-form"><label>Produto<select id="order-product"></select></label><label>ID do cliente<input id="order-user" value="100000000000000001" pattern="[0-9]{17,20}"></label><button>criar pedido manual</button></form><p class="warning">A entrega só é consumida após confirmação manual. Confira o pagamento fora do bot antes de aprovar.</p></article>
           <div id="orders"></div>
         </section>
 
         <section class="view" data-page="settings">
-          <div class="page-title"><div><p class="eyebrow">AJUSTES LOCAIS</p><h1>configurações</h1></div></div>
-          <article class="card"><form id="settings-form"><label>Instruções de pagamento futuras<textarea id="instructions" maxlength="1000" rows="5"></textarea></label><label>Canal de vendas concluídas<select id="sales-channel"><option value="">não publicar</option></select></label><button>salvar configurações</button></form></article>
-          <article class="card"><h2>limites deste laboratório</h2><ul><li>Servidor escutando apenas em <code>127.0.0.1</code>.</li><li>Login por senha local; sem OAuth do Discord.</li><li>Sem token, registro de comandos, Gateway, pagamentos ou mensagens externas.</li><li>Banco e chave de estoque próprios na pasta <code>data/</code>.</li></ul></article>
+          <div class="page-title"><div><p class="eyebrow">AJUSTES</p><h1>configurações</h1></div></div>
+          <article class="card"><form id="settings-form"><label>Instruções de pagamento<textarea id="instructions" maxlength="1000" rows="5"></textarea></label><label>Canal de vendas concluídas<select id="sales-channel"><option value="">não publicar</option></select></label><button>salvar configurações</button></form></article>
+          <article class="card"><h2>segurança do painel</h2><ul><li>Servidor web escutando apenas em <code>127.0.0.1</code>.</li><li>Acesso remoto somente por túnel SSH.</li><li>Token armazenado exclusivamente no <code>.env</code> privado da VPS.</li><li>Banco e chave de estoque próprios na pasta <code>data/</code>.</li></ul></article>
         </section>
       </section>
     </div>
   </div>
+  <datalist id="role-options"></datalist>
   <script src="/app.js" defer></script>
 </body>
 </html>

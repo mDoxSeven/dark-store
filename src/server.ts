@@ -6,6 +6,7 @@ import { ROOT } from './lib/paths.js';
 import { prisma } from './lib/db.js';
 import { COOKIE, cookieToken, validSession, verifyPassword, newSession, deleteSession, adminExists, LoginLimiter } from './lib/auth.js';
 import * as service from './service.js';
+import { runtimeDiscordStatus, runtimeMode } from './runtime.js';
 
 async function body(req: IncomingMessage) {
   if (req.headers['content-type']?.split(';')[0] !== 'application/json') throw new service.InputError('Use JSON.');
@@ -50,7 +51,11 @@ export function makeServer() {
         res.setHeader('Set-Cookie', `${COOKIE}=${await newSession()}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800`);
         json(res, 200, { ok: true }); return;
       }
-      if (path === '/api/session' && method === 'GET') { json(res, 200, { authenticated: await validSession(token), configured: await adminExists(), mode: 'local-simulation' }); return; }
+      if (path === '/api/session' && method === 'GET') { json(res, 200, { authenticated: await validSession(token), configured: await adminExists(), mode: runtimeMode() }); return; }
+      if (path === '/api/health' && method === 'GET') {
+        await prisma.$queryRawUnsafe('SELECT 1');
+        json(res, 200, { status: 'ok', database: 'connected', discord: runtimeDiscordStatus() }); return;
+      }
       if (path.startsWith('/api/')) {
         if (!await validSession(token)) { json(res, 401, { error: 'Entre no painel.' }); return; }
         if (path === '/api/logout' && method === 'POST') {

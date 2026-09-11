@@ -8,7 +8,7 @@ datasource db {
 model DigitalStore {
   guildId String @id
   channelsJson String @default("{}")
-  paymentInstructions String @default("Ambiente de testes: nenhum pagamento real.")
+  paymentInstructions String @default("Aguarde as instruções da equipe antes de realizar qualquer pagamento.")
   salesChannelId String?
   ordersChannelId String?
   setupUntil DateTime?

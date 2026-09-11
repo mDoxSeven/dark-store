@@ -1,8 +1,12 @@
-export const STORE_GUILD_ID = "1547613908016038032";
-export const APPLICATION_ID = "1547707174254280794";
-// This project is a local laboratory. There is deliberately no gateway login.
-export const MODE = "local-simulation" as const;
-export const STORE_OWNER_ID = "1002774556269891694";
+const configuredId = (name: string, fallback: string) => {
+  const value = process.env[name]?.trim() || fallback;
+  if (!/^\d{17,20}$/.test(value)) throw new Error(`${name} inválido.`);
+  return value;
+};
+export const STORE_GUILD_ID = configuredId('DARK_GUILD_ID', '1547613908016038032');
+export const APPLICATION_ID = configuredId('DARK_APPLICATION_ID', '1547707174254280794');
+export const MODE = process.env.DARK_DISCORD_TOKEN ? 'discord-live' as const : 'local-simulation' as const;
+export const STORE_OWNER_ID = configuredId('DARK_OWNER_ID', '1002774556269891694');
 export function assertStoreGuild(guildId: string) {
   if (guildId !== STORE_GUILD_ID) throw new Error("A loja nao esta habilitada neste servidor.");
 }

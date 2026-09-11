@@ -15,10 +15,20 @@ export async function setupStore(guild: Guild, actorId: string) {
   const channels = await guild.channels.fetch();
   const created: string[] = [];
   try {
+    const roles = await guild.roles.fetch();
+    let quarantine = roles.get(ids.quarantineRole);
+    if (!quarantine || quarantine.managed) {
+      quarantine = await guild.roles.create({ name: 'Quarentena', permissions: [], reason: 'Proteção anti-raid da dark store' });
+      ids.quarantineRole = quarantine.id;
+      await prisma.digitalStore.update({ where: { guildId: guild.id }, data: { channelsJson: JSON.stringify(ids) } });
+      created.push('Cargo Quarentena');
+    }
+    await prisma.antiRaidConfig.upsert({ where: { guildId: guild.id }, create: { guildId: guild.id, quarantineRoleId: quarantine.id }, update: { quarantineRoleId: quarantine.id } });
     for (const group of STORE_LAYOUT) {
       const privacy = "private" in group && group.private;
       const permissions = (readOnly: boolean) => [
         { id: guild.id, type: OverwriteType.Role, deny: privacy ? [PermissionFlagsBits.ViewChannel] : readOnly ? [PermissionFlagsBits.SendMessages, PermissionFlagsBits.CreatePublicThreads, PermissionFlagsBits.CreatePrivateThreads, PermissionFlagsBits.SendMessagesInThreads] : [] },
+        { id: quarantine.id, type: OverwriteType.Role, deny: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak] },
         { id: bot.id, type: OverwriteType.Member, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak] },
         { id: STORE_OWNER_ID, type: OverwriteType.Member, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak] },
       ];
@@ -29,6 +39,7 @@ export async function setupStore(guild: Guild, actorId: string) {
         await prisma.digitalStore.update({ where: { guildId: guild.id }, data: { channelsJson: JSON.stringify(ids) } });
         created.push(group.name);
       }
+      await category.permissionOverwrites.edit(quarantine.id, { ViewChannel: false, SendMessages: false, Connect: false, Speak: false }, { reason: 'Proteção anti-raid da dark store' });
       for (const item of group.channels) {
         let channel = channels.get(ids[item.key]);
         if (!channel || channel.type !== item.type) {
@@ -39,6 +50,7 @@ export async function setupStore(guild: Guild, actorId: string) {
           await prisma.digitalStore.update({ where: { guildId: guild.id }, data: { channelsJson: JSON.stringify(ids) } });
           created.push(item.name);
         }
+        if (channel) await channel.permissionOverwrites.edit(quarantine.id, { ViewChannel: false, SendMessages: false, Connect: false, Speak: false }, { reason: 'Proteção anti-raid da dark store' });
       }
     }
     await prisma.digitalStore.update({ where: { guildId: STORE_GUILD_ID }, data: {

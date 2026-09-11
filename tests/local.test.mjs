@@ -11,6 +11,8 @@ import { sealStock, unsealStock } from '../src/store/crypto.ts';
 import { randomBytes } from 'node:crypto';
 import { buildV2Message, validateV2Panel } from '../src/v2.ts';
 import { AntiRaidEngine, validateAntiRaid } from '../src/antiRaid.ts';
+import { AuditLogEvent } from 'discord.js';
+import { auditActionName, parseRoleButton } from '../src/discord/ids.ts';
 
 const root = resolve(import.meta.dirname, '..');
 const product = { title: 'item teste', description: 'conteúdo de teste', category: 'geral', priceCents: 1000, imageUrl: '', footer: 'dark store', buttonLabel: 'comprar', accentColor: '#aeb1b6', divider: true, active: true };
@@ -62,6 +64,14 @@ test('anti-raid detecta rajadas, respeita confiança e valida limites', () => {
   assert.throws(() => validateAntiRaid({ ...settings, joinLimit: 2 }));
 });
 
+test('integração interpreta somente botões e auditorias autorizados', () => {
+  assert.deepEqual(parseRoleButton('v2role:toggle:100000000000000002'), { mode: 'toggle', roleId: '100000000000000002' });
+  assert.equal(parseRoleButton('v2role:admin:100000000000000002'), null);
+  assert.equal(parseRoleButton('v2role:add:123'), null);
+  assert.equal(auditActionName(AuditLogEvent.ChannelDelete), 'CHANNEL_DELETE');
+  assert.equal(auditActionName(AuditLogEvent.MessageDelete), null);
+});
+
 test('painel local executa fluxo completo sem OAuth, token ou Discord', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'dark-store-local-'));
   const port = 32000 + Math.floor(Math.random() * 5000);
@@ -85,6 +95,7 @@ test('painel local executa fluxo completo sem OAuth, token ou Discord', async ()
       await new Promise(resolveDone => setTimeout(resolveDone, 100));
     }
     assert.equal(ready, true, `servidor não iniciou: ${stderr}`);
+    assert.deepEqual(await (await api('/api/health')).json(), { status: 'ok', database: 'connected', discord: 'disabled' });
     assert.equal((await api('/api/state')).status, 401);
     assert.equal((await api('/api/login', { method: 'POST', headers: { origin, 'content-type': 'application/json' }, body: JSON.stringify({ password: 'errada' }) })).status, 401);
     const login = await api('/api/login', { method: 'POST', headers: { origin, 'content-type': 'application/json' }, body: JSON.stringify({ password }) });
@@ -100,6 +111,7 @@ test('painel local executa fluxo completo sem OAuth, token ou Discord', async ()
     let state = await (await api('/api/state', { headers: { cookie } })).json();
     assert.equal(state.mode, 'local-simulation');
     assert.equal(state.channels.filter(c => c.type === 2).length, 2);
+    assert.deepEqual(state.roles, []);
     const channelId = state.channels.find(c => c.key === 'accounts').id;
     const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
     const uploadResponse = await api('/api/assets', { method: 'POST', headers: { origin, cookie, 'content-type': 'image/png', 'x-file-name': encodeURIComponent('teste.png') }, body: png });

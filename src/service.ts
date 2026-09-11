@@ -3,14 +3,14 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { prisma } from './lib/db.js';
 import { DATA } from './lib/paths.js';
-import { localChannels, localGuild, localTransport } from './lib/simulation.js';
 import { executeCriar } from './bot/criar.js';
-import { APPLICATION_ID, MODE, STORE_GUILD_ID, STORE_LAYOUT, STORE_OWNER_ID } from './store/config.js';
+import { APPLICATION_ID, STORE_GUILD_ID, STORE_LAYOUT, STORE_OWNER_ID } from './store/config.js';
 import { validateProduct, productMessage, type ProductInput } from './store/product.js';
 import { createOrder, approveOrder, cancelOrder } from './store/orders.js';
 import { sealStock, unsealStock, storeKey, stockFingerprint } from './store/crypto.js';
 import { buildV2Message, validateV2Panel, type V2PanelInput } from './v2.js';
 import { AntiRaidEngine, respondToRaid, validateAntiRaid, type AntiRaidSettings } from './antiRaid.js';
+import { runtimeChannels, runtimeDiscordStatus, runtimeGuild, runtimeMode, runtimeRoles, runtimeTransport } from './runtime.js';
 
 export class InputError extends Error {}
 const requireProduct = async (id: string) => {
@@ -19,23 +19,23 @@ const requireProduct = async (id: string) => {
   return product;
 };
 export async function state() {
-  const [products, orders, channels, settings, messages, panels, antiRaid, incidents] = await Promise.all([
+  const [products, orders, channels, roles, settings, messages, panels, antiRaid, incidents] = await Promise.all([
     prisma.digitalProduct.findMany({ where: { guildId: STORE_GUILD_ID }, orderBy: { updatedAt: 'desc' }, take: 200, include: { _count: { select: { stock: { where: { claimedAt: null } } } } } }),
     prisma.digitalOrder.findMany({ where: { guildId: STORE_GUILD_ID }, orderBy: { createdAt: 'desc' }, take: 100,
       select: { id: true, productId: true, userId: true, productTitle: true, priceCents: true, status: true, createdAt: true } }),
-    localChannels(), prisma.digitalStore.findUnique({ where: { guildId: STORE_GUILD_ID } }),
+    runtimeChannels(), runtimeRoles(), prisma.digitalStore.findUnique({ where: { guildId: STORE_GUILD_ID } }),
     prisma.localMessage.count(),
     prisma.managedV2Panel.findMany({ where: { guildId: STORE_GUILD_ID }, orderBy: { updatedAt: 'desc' }, take: 100, include: { buttons: { orderBy: { position: 'asc' } } } }),
     prisma.antiRaidConfig.findUnique({ where: { guildId: STORE_GUILD_ID } }),
     prisma.securityIncident.findMany({ where: { guildId: STORE_GUILD_ID }, orderBy: { createdAt: 'desc' }, take: 100 })
   ]);
-  return { applicationId: APPLICATION_ID, guildId: STORE_GUILD_ID, mode: MODE, layout: STORE_LAYOUT,
-    products: products.map(({ _count, ...p }) => ({ ...p, stock: _count.stock })), orders, channels, settings, messages,
+  return { applicationId: APPLICATION_ID, guildId: STORE_GUILD_ID, mode: runtimeMode(), discord: runtimeDiscordStatus(), layout: STORE_LAYOUT,
+    products: products.map(({ _count, ...p }) => ({ ...p, stock: _count.stock })), orders, channels, roles, settings, messages,
     panels: panels.map(panel => ({ ...panel, buttons: panel.buttons.map(button => ({ ...button, url: button.url || '', roleId: button.roleId || '', emoji: button.emoji || '' })) })),
     antiRaid: antiRaid ? { ...antiRaid, quarantineRoleId: antiRaid.quarantineRoleId || '', logChannelId: antiRaid.logChannelId || '', trustedUserIds: JSON.parse(antiRaid.trustedUserIds) } : defaultAntiRaid(), incidents };
 }
 export async function simulateSetup(confirmed: boolean) {
-  return executeCriar(await localGuild(), STORE_OWNER_ID, confirmed);
+  return executeCriar(await runtimeGuild(), STORE_OWNER_ID, confirmed);
 }
 async function refreshProduct(id: string) {
   const lock = await prisma.digitalProduct.updateMany({ where: { id, OR: [{ publishUntil: null }, { publishUntil: { lt: new Date() } }] }, data: { publishUntil: new Date(Date.now() + 60_000) } });
@@ -44,7 +44,7 @@ async function refreshProduct(id: string) {
     const p = await requireProduct(id);
     if (!p.channelId) return;
     const stock = await prisma.digitalStock.count({ where: { productId: id, claimedAt: null } });
-    const messageId = await localTransport().publish(p.channelId, p.messageId, productMessage(p, stock));
+    const messageId = await runtimeTransport().publish(p.channelId, p.messageId, productMessage(p, stock));
     await prisma.digitalProduct.update({ where: { id }, data: { messageId } });
   } finally { await prisma.digitalProduct.updateMany({ where: { id }, data: { publishUntil: null } }); }
 }
@@ -53,7 +53,7 @@ export async function saveProduct(body: Record<string, unknown>) {
   try { data = validateProduct(body.product as ProductInput); } catch { throw new InputError('Revise título, preço em centavos, imagem HTTPS e limites dos campos.'); }
   const id = typeof body.id === 'string' ? body.id : null;
   const channelId = typeof body.channelId === 'string' && body.channelId ? body.channelId : null;
-  if (channelId) await localTransport().checkChannel(channelId);
+  if (channelId) await runtimeTransport().checkChannel(channelId);
   if (id) {
     const old = await requireProduct(id);
     if (old.messageId && old.channelId !== channelId) throw new InputError('Mantenha o canal de uma publicação existente.');
@@ -61,8 +61,8 @@ export async function saveProduct(body: Record<string, unknown>) {
   const p = id ? await prisma.digitalProduct.update({ where: { id }, data: { ...data, channelId } })
     : await prisma.digitalProduct.create({ data: { ...data, guildId: STORE_GUILD_ID, channelId } });
   try { await refreshProduct(p.id); }
-  catch { return { id: p.id, message: 'Produto salvo. A prévia local precisa ser atualizada; não recadastre o produto.' }; }
-  return { id: p.id, message: 'Produto salvo. Publicação simulada atualizada, sem enviar ao Discord.' };
+  catch { return { id: p.id, message: 'Produto salvo, mas a publicação não foi atualizada. Não recadastre; verifique o canal e tente salvar novamente.' }; }
+  return { id: p.id, message: runtimeMode() === 'discord-live' ? 'Produto salvo e publicação atualizada no Discord.' : 'Produto salvo. Publicação local atualizada.' };
 }
 export async function addStock(body: Record<string, unknown>) {
   const id = String(body.productId || '');
@@ -87,31 +87,31 @@ export async function addStock(body: Record<string, unknown>) {
 export async function simulateOrder(body: Record<string, unknown>) {
   if (typeof body.userId !== 'string' || !/^\d{17,20}$/.test(body.userId)) throw new InputError('Informe um ID de teste com 17 a 20 dígitos.');
   const order = await createOrder(prisma, String(body.productId || ''), body.userId, randomUUID());
-  return { id: order.id, message: `Pedido de teste ${order.id} criado. Nenhuma cobrança ou DM real.` };
+  return { id: order.id, message: runtimeMode() === 'discord-live' ? `Pedido manual ${order.id} criado.` : `Pedido de teste ${order.id} criado. Nenhuma cobrança ou DM real.` };
 }
 export async function processOrder(body: Record<string, unknown>) {
-  if (body.confirmed !== true) throw new InputError('Confirme a simulação.');
+  if (body.confirmed !== true) throw new InputError('Confirme a ação.');
   const id = String(body.id || '');
   const order = await prisma.digitalOrder.findFirst({ where: { id, guildId: STORE_GUILD_ID } });
   if (!order) throw new InputError('Pedido não encontrado.');
   try {
     if (body.operation === 'cancel') await cancelOrder(prisma, STORE_OWNER_ID, id);
     else if (body.operation === 'approve' || body.operation === 'retry') {
-      await approveOrder(prisma, STORE_OWNER_ID, id, localTransport(body.failDM === true), await storeKey(), body.operation === 'retry');
+      await approveOrder(prisma, STORE_OWNER_ID, id, runtimeTransport(body.failDM === true), await storeKey(), body.operation === 'retry');
     } else throw new InputError('Operação inválida.');
   } finally { await refreshProduct(order.productId).catch(() => {}); }
-  return { message: 'Simulação registrada. Nenhum pagamento, mensagem ou entrega real.' };
+  return { message: runtimeMode() === 'discord-live' ? 'Ação registrada no pedido.' : 'Simulação registrada. Nenhum pagamento, mensagem ou entrega real.' };
 }
 export async function saveSettings(body: Record<string, unknown>) {
   if (typeof body.paymentInstructions !== 'string' || body.paymentInstructions.length > 1000) throw new InputError('Instruções: até 1000 caracteres.');
   const salesChannelId = typeof body.salesChannelId === 'string' && body.salesChannelId ? body.salesChannelId : null;
-  if (salesChannelId) await localTransport().checkChannel(salesChannelId);
+  if (salesChannelId) await runtimeTransport().checkChannel(salesChannelId);
   await prisma.digitalStore.upsert({ where: { guildId: STORE_GUILD_ID }, create: { guildId: STORE_GUILD_ID, paymentInstructions: body.paymentInstructions, salesChannelId }, update: { paymentInstructions: body.paymentInstructions, salesChannelId } });
-  return { message: 'Configurações locais salvas.' };
+  return { message: runtimeMode() === 'discord-live' ? 'Configurações salvas para o servidor.' : 'Configurações locais salvas.' };
 }
 export async function delivery(id: string) {
   const order = await prisma.digitalOrder.findFirst({ where: { id, guildId: STORE_GUILD_ID, status: 'delivered' }, include: { stock: true } });
-  if (!order?.stock) throw new InputError('Não há entrega simulada concluída para este pedido.');
+  if (!order?.stock) throw new InputError('Não há entrega concluída para este pedido.');
   return unsealStock(order.stock.ciphertext, await storeKey());
 }
 export async function v2(id: string) {
@@ -125,8 +125,10 @@ export function defaultAntiRaid(): AntiRaidSettings {
 export async function saveV2Panel(body: Record<string, unknown>) {
   let panel: V2PanelInput;
   try { panel = validateV2Panel(body.panel as V2PanelInput); } catch (error) { throw new InputError(error instanceof Error ? error.message : 'Painel inválido.'); }
-  await localTransport().checkChannel(panel.channelId);
-  if (panel.assetId && !await prisma.mediaAsset.findUnique({ where: { id: panel.assetId } })) throw new InputError('Anexo local não encontrado.');
+  const transport = runtimeTransport();
+  await transport.checkChannel(panel.channelId);
+  const asset = panel.assetId ? await prisma.mediaAsset.findUnique({ where: { id: panel.assetId } }) : null;
+  if (panel.assetId && !asset) throw new InputError('Anexo local não encontrado.');
   const id = typeof body.id === 'string' ? body.id : null;
   const old = id ? await prisma.managedV2Panel.findFirst({ where: { id, guildId: STORE_GUILD_ID } }) : null;
   if (id && !old) throw new InputError('Painel V2 não encontrado.');
@@ -138,16 +140,19 @@ export async function saveV2Panel(body: Record<string, unknown>) {
     if (panel.buttons.length) await tx.managedV2Button.createMany({ data: panel.buttons.map((button, position) => ({ panelId: result.id, label: button.label, type: button.type, url: button.url || null, roleId: button.roleId || null, roleMode: button.roleMode, style: button.style, emoji: button.emoji || null, position })) });
     return result;
   });
-  if (old?.messageId && old.channelId !== panel.channelId) await prisma.localMessage.deleteMany({ where: { id: old.messageId } });
-  const messageId = await localTransport().publish(panel.channelId, old?.channelId === panel.channelId ? old.messageId : null, buildV2Message(panel, panel.assetId ? `/api/assets/${panel.assetId}` : ''));
+  const files = asset ? [{ data: await readFile(resolve(assetsDir, asset.id)), name: `${asset.id}-${asset.filename}` }] : [];
+  const assetUrl = asset ? `attachment://${files[0].name}` : '';
+  const messageId = await transport.publish(panel.channelId, old?.channelId === panel.channelId ? old.messageId : null, buildV2Message(panel, assetUrl), files);
+  if (old?.messageId && old.channelId && old.channelId !== panel.channelId) await transport.delete(old.channelId, old.messageId).catch(() => {});
   await prisma.managedV2Panel.update({ where: { id: saved.id }, data: { messageId } });
-  return { id: saved.id, message: 'Painel V2 salvo e publicação local sincronizada.' };
+  return { id: saved.id, message: runtimeMode() === 'discord-live' ? 'Painel V2 salvo e sincronizado no Discord.' : 'Painel V2 salvo e publicação local sincronizada.' };
 }
 export async function removeV2Panel(id: string) {
   const panel = await prisma.managedV2Panel.findFirst({ where: { id, guildId: STORE_GUILD_ID } });
   if (!panel) throw new InputError('Painel V2 não encontrado.');
+  if (panel.messageId && panel.channelId) await runtimeTransport().delete(panel.channelId, panel.messageId);
   await prisma.$transaction([prisma.localMessage.deleteMany({ where: { id: panel.messageId || '' } }), prisma.managedV2Panel.delete({ where: { id } })]);
-  return { message: 'Painel V2 e publicação local removidos.' };
+  return { message: runtimeMode() === 'discord-live' ? 'Painel V2 removido do Discord.' : 'Painel V2 e publicação local removidos.' };
 }
 const assetsDir = resolve(DATA, 'assets');
 export async function saveAsset(filename: string, mime: string, value: Buffer) {
@@ -174,14 +179,20 @@ export async function getAsset(id: string) {
 export async function saveAntiRaid(body: Record<string, unknown>) {
   let input: AntiRaidSettings;
   try { input = validateAntiRaid(body.settings as AntiRaidSettings); } catch (error) { throw new InputError(error instanceof Error ? error.message : 'Configuração inválida.'); }
-  if (input.logChannelId) await localTransport().checkChannel(input.logChannelId);
+  if (input.logChannelId) await runtimeTransport().checkChannel(input.logChannelId);
   await prisma.antiRaidConfig.upsert({ where: { guildId: STORE_GUILD_ID }, create: { guildId: STORE_GUILD_ID, ...input, trustedUserIds: JSON.stringify(input.trustedUserIds), quarantineRoleId: input.quarantineRoleId || null, logChannelId: input.logChannelId || null }, update: { ...input, trustedUserIds: JSON.stringify(input.trustedUserIds), quarantineRoleId: input.quarantineRoleId || null, logChannelId: input.logChannelId || null } });
-  return { message: 'Anti-raid salvo no laboratório. Nenhuma ação externa foi ativada.' };
+  return { message: runtimeMode() === 'discord-live' ? 'Anti-raid salvo e ativo no servidor.' : 'Anti-raid salvo no laboratório. Nenhuma ação externa foi ativada.' };
+}
+export async function getAntiRaidSettings(): Promise<AntiRaidSettings> {
+  const record = await prisma.antiRaidConfig.findUnique({ where: { guildId: STORE_GUILD_ID } });
+  if (!record) return defaultAntiRaid();
+  let trustedUserIds: string[] = [];
+  try { trustedUserIds = JSON.parse(record.trustedUserIds); } catch { throw new Error('Lista de confiança do anti-raid corrompida.'); }
+  return validateAntiRaid({ ...record, quarantineRoleId: record.quarantineRoleId || '', logChannelId: record.logChannelId || '', trustedUserIds } as AntiRaidSettings);
 }
 const raidEngine = new AntiRaidEngine();
 export async function simulateRaid(body: Record<string, unknown>) {
-  const record = await prisma.antiRaidConfig.findUnique({ where: { guildId: STORE_GUILD_ID } });
-  const settings = record ? validateAntiRaid({ ...record, quarantineRoleId: record.quarantineRoleId || '', logChannelId: record.logChannelId || '', trustedUserIds: JSON.parse(record.trustedUserIds) } as AntiRaidSettings) : defaultAntiRaid();
+  const settings = await getAntiRaidSettings();
   if (!settings.enabled) throw new InputError('Ative e salve o anti-raid antes de simular.');
   const count = Number(body.count);
   if (!Number.isSafeInteger(count) || count < 1 || count > 100) throw new InputError('Quantidade de simulação inválida.');

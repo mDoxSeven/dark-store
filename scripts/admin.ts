@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { randomBytes } from 'node:crypto';
 import { createAdmin } from '../src/lib/auth.js';
 import { prisma } from '../src/lib/db.js';
