@@ -102,6 +102,10 @@ No painel, abra `configurações`, informe a chave Pix, o nome do recebedor exat
 
 O QR não confirma recebimento automaticamente. Antes de aprovar e entregar um item, confira o pagamento na instituição financeira e compare valor e identificador do pedido. Pedidos antigos preservam o código gerado mesmo se a configuração Pix mudar.
 
+Depois de confirmar a compra, o cliente pode usar **Cancelar pedido** enquanto o pagamento ainda está pendente. O bot pede a confirmação **Ainda não paguei · cancelar**, cancela pedido e atendimento juntos e agenda a remoção do canal, mantendo o histórico no painel. Pedidos aprovados, reservados ou em entrega não podem ser cancelados pelo cliente. Se já houve Pix, o cliente deve chamar o administrador: cancelar no bot não estorna dinheiro nem invalida um código já copiado.
+
+Ao aprovar o pagamento no painel, o bot publica um V2 **Pagamento confirmado pela equipe** no ticket. Para estoque automático, a entrega também confirma o pagamento no privado; para estoque manual, o aviso orienta o cliente a aguardar a equipe no ticket. Esse aviso depende da aprovação administrativa, não de confirmação bancária automática.
+
 ## Acessar o painel
 
 No computador do administrador:

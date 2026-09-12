@@ -10,7 +10,7 @@ import { configureDiscordRuntime } from '../runtime.js';
 import {
   APPLICATION_ID, REVIEW_ROLE_ID, REVIEWS_CHANNEL_ID, STORE_GUILD_ID, STORE_OWNER_ID, UNVERIFIED_ROLE_ID, VERIFIED_ROLE_ID, supportRoleIds,
 } from '../store/config.js';
-import { createOrder } from '../store/orders.js';
+import { cancelCheckoutOrder, createOrder } from '../store/orders.js';
 import { getAntiRaidSettings } from '../service.js';
 import { discordRuntime } from './transport.js';
 import { auditActionName, parseRoleButton } from './ids.js';
@@ -25,7 +25,7 @@ import { refreshVerificationPanel } from '../store/verification.js';
 import { VERIFICATION_BUTTON_ID } from '../store/verificationMessage.js';
 import { welcomeMessage } from '../store/welcomeMessage.js';
 import { reviewRequestMessage } from '../store/reviewMessage.js';
-import { confirmationTicketMessage, parseTicketButton, paymentTicketMessage } from '../store/tickets.js';
+import { cancellationPrompt, cancelledTicketMessage, confirmationTicketMessage, parseTicketButton, paymentTicketMessage } from '../store/tickets.js';
 const errorText = (error: unknown) => error instanceof Error ? error.message.slice(0, 1500) : 'Ação não concluída.';
 
 async function handleCriar(interaction: ChatInputCommandInteraction) {
@@ -113,6 +113,7 @@ async function handleTicketButton(interaction: ButtonInteraction, parsed: NonNul
     if (ticket.status === 'awaiting_payment' && ticket.orderId) {
       const existingOrder = await prisma.digitalOrder.findUnique({ where: { id: ticket.orderId } });
       if (!existingOrder) throw new Error('Pedido vinculado não encontrado.');
+      if (existingOrder.status !== 'pending' || existingOrder.approvedBy) throw new Error('Este pedido já foi processado. Não faça outro Pix.');
       await interaction.message.edit({ components: paymentTicketMessage(ticket, existingOrder).components } as MessageEditOptions);
       await interaction.editReply('Os dados do pagamento foram restaurados no atendimento.');
       return;
@@ -136,8 +137,27 @@ async function handleTicketButton(interaction: ButtonInteraction, parsed: NonNul
   if (parsed.action === 'qr') {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const order = ticket.orderId ? await prisma.digitalOrder.findUnique({ where: { id: ticket.orderId } }) : null;
+    if (ticket.status !== 'awaiting_payment' || order?.status !== 'pending' || order.approvedBy) throw new Error('Este pedido não aguarda pagamento. Não utilize o Pix antigo.');
     if (!order?.pixPayload) throw new Error('Este pedido não possui QR Code Pix.');
     await interaction.editReply({ content: `QR Code do pedido \`${order.id}\`.`, files: [{ attachment: await pixQrPng(order.pixPayload), name: `pix-${order.id}.png` }] });
+    return;
+  }
+  if (parsed.action === 'cancel-back') {
+    await interaction.update({ content: 'Pedido mantido. Continue o atendimento no canal.', components: [] });
+    return;
+  }
+  if (parsed.action === 'cancel') {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const order = ticket.orderId ? await prisma.digitalOrder.findUnique({ where: { id: ticket.orderId } }) : null;
+    if (ticket.status !== 'awaiting_payment' || order?.status !== 'pending' || order.approvedBy) throw new Error('Somente pedidos aguardando pagamento podem ser cancelados. Se já pagou, chame o administrador.');
+    await interaction.editReply(cancellationPrompt(ticket.id) as MessageEditOptions);
+    return;
+  }
+  if (parsed.action === 'cancel-confirm') {
+    await interaction.deferUpdate();
+    const result = await cancelCheckoutOrder(prisma, interaction.user.id, ticket.id);
+    await interaction.editReply({ content: 'Pedido cancelado. Não use o Pix antigo. O canal será removido em alguns segundos e o registro ficará salvo no painel.', components: [] });
+    await ticketChannel.send(cancelledTicketMessage(result.orderId) as MessageCreateOptions).catch(() => {});
     return;
   }
   if (parsed.action === 'close') {

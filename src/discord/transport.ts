@@ -45,7 +45,7 @@ export function createDiscordTransport(client: Client, guild: Guild): StoreTrans
     async deliver(userId, orderId, delivery) {
       const user = await client.users.fetch(userId);
       const message = await user.send({
-        content: `Seu pedido \`${orderId}\` foi confirmado. O item está no arquivo privado anexado.`,
+        content: `O pagamento do seu pedido \`${orderId}\` foi confirmado pela equipe. O item está no arquivo privado anexado.`,
         allowedMentions: { parse: [] },
         files: [{ attachment: Buffer.from(delivery, 'utf8'), name: `entrega-${orderId}.txt` }]
       });

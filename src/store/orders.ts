@@ -1,8 +1,9 @@
 import type { PrismaClient } from "@prisma/client";
-import { assertStoreOwner, STORE_GUILD_ID } from "./config.js";
+import { assertStoreOwner, STORE_GUILD_ID, STORE_OWNER_ID } from "./config.js";
 import { unsealStock } from "./crypto.js";
 import type { StoreTransport } from "./transport.js";
 import { buildPixPayload } from "./pix.js";
+import { paymentApprovedMessage } from "./tickets.js";
 
 export async function createOrder(db: PrismaClient, productId: string, userId: string, interactionId: string) {
   return db.$transaction(async (tx) => {
@@ -38,7 +39,7 @@ export async function approveOrder(db: PrismaClient, actorId: string, orderId: s
         if (claimManual.count !== 1) throw new Error("Estoque esgotado: nao confirme novos pagamentos.");
         const claimed = await tx.digitalOrder.updateMany({ where: { id: record.id, status: record.status, updatedAt: record.updatedAt }, data: { status: "manual_fulfillment", activeKey: null, approvedBy: actorId } });
         if (claimed.count !== 1) throw new Error("Outro processo ja alterou este pedido. Confira o resultado.");
-        return { manual: true as const, order: await tx.digitalOrder.findUniqueOrThrow({ where: { id: record.id }, include: { stock: true } }) };
+        return { manual: true as const, firstApproval: !record.approvedBy, order: await tx.digitalOrder.findUniqueOrThrow({ where: { id: record.id }, include: { stock: true } }) };
       }
       const claim = await tx.digitalStock.updateMany({ where: { id: stock.id, claimedAt: null }, data: { claimedAt: new Date() } });
       if (claim.count !== 1) throw new Error("Item reservado por outro pedido. Tente novamente.");
@@ -46,9 +47,16 @@ export async function approveOrder(db: PrismaClient, actorId: string, orderId: s
     }
     const claimed = await tx.digitalOrder.updateMany({ where: { id: record.id, status: record.status, updatedAt: record.updatedAt }, data: { stockId, status: "delivering", approvedBy: actorId } });
     if (claimed.count !== 1) throw new Error("Outro processo ja alterou este pedido. Confira o resultado.");
-    return { manual: false as const, order: await tx.digitalOrder.findUniqueOrThrow({ where: { id: record.id }, include: { stock: true } }) };
+    return { manual: false as const, firstApproval: !record.approvedBy, order: await tx.digitalOrder.findUniqueOrThrow({ where: { id: record.id }, include: { stock: true } }) };
   });
-  if (reservation.manual) return "Pagamento confirmado. Uma unidade do estoque manual foi baixada; conclua a entrega no ticket.";
+  let notificationWarning = '';
+  if (reservation.firstApproval) {
+    try {
+      const ticket = await db.checkoutTicket.findFirst({ where: { guildId: STORE_GUILD_ID, orderId, deleteAt: null } });
+      if (ticket) await transport.publish(ticket.channelId, null, paymentApprovedMessage(reservation.order, reservation.manual));
+    } catch { notificationWarning = ' O aviso no ticket falhou; avise o cliente manualmente. Não aprove novamente.'; }
+  }
+  if (reservation.manual) return "Pagamento confirmado. Uma unidade do estoque manual foi baixada; conclua a entrega no ticket." + notificationWarning;
   const order = reservation.order;
   const key = await getKey();
   let messageId: string;
@@ -65,9 +73,9 @@ export async function approveOrder(db: PrismaClient, actorId: string, orderId: s
     try {
       const salesMessageId = await transport.sale(settings.salesChannelId, order);
       await db.digitalOrder.update({ where: { id: order.id }, data: { salesMessageId } });
-    } catch { return "Entregue. O registro publico de venda falhou; a entrega nao sera repetida."; }
+    } catch { return "Entregue. O registro publico de venda falhou; a entrega nao sera repetida." + notificationWarning; }
   }
-  return "Pagamento confirmado e item entregue no privado.";
+  return "Pagamento confirmado e item entregue no privado." + notificationWarning;
 }
 
 export async function completeManualOrder(db: PrismaClient, actorId: string, orderId: string, transport: StoreTransport) {
@@ -89,4 +97,23 @@ export async function cancelOrder(db: PrismaClient, actorId: string, orderId: st
   assertStoreOwner(STORE_GUILD_ID, actorId);
   const result = await db.digitalOrder.updateMany({ where: { id: orderId, guildId: STORE_GUILD_ID, status: "pending", stockId: null }, data: { status: "cancelled", activeKey: null } });
   if (!result.count) throw new Error("Somente pedidos pendentes, sem item reservado, podem ser cancelados aqui.");
+}
+
+export async function cancelCheckoutOrder(db: PrismaClient, actorId: string, ticketId: string) {
+  return db.$transaction(async tx => {
+    const ticket = await tx.checkoutTicket.findFirst({ where: { id: ticketId, guildId: STORE_GUILD_ID } });
+    if (!ticket || (ticket.userId !== actorId && actorId !== STORE_OWNER_ID)) throw new Error('Somente o cliente deste atendimento ou o responsável pela loja pode cancelar o pedido.');
+    if (ticket.status !== 'awaiting_payment' || !ticket.orderId || ticket.deleteAt) throw new Error('Este pedido não está aguardando pagamento ou já foi encerrado.');
+    const cancelled = await tx.digitalOrder.updateMany({
+      where: { id: ticket.orderId, guildId: STORE_GUILD_ID, userId: ticket.userId, productId: ticket.productId, status: 'pending', stockId: null, approvedBy: null },
+      data: { status: 'cancelled', activeKey: null },
+    });
+    if (cancelled.count !== 1) throw new Error('Pagamento aprovado ou pedido em processamento. Procure o administrador; este pedido não pode mais ser cancelado pelo cliente.');
+    const closed = await tx.checkoutTicket.updateMany({
+      where: { id: ticket.id, status: 'awaiting_payment', orderId: ticket.orderId, deleteAt: null },
+      data: { status: 'cancelled', activeKey: null, deleteAt: new Date(Date.now() + 10_000) },
+    });
+    if (closed.count !== 1) throw new Error('O atendimento já foi alterado. Confira o resultado antes de repetir.');
+    return { orderId: ticket.orderId };
+  });
 }
