@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { Guild } from 'discord.js';
 import { prisma } from './db.js';
-import { APPLICATION_ID, REVIEW_ROLE_ID, REVIEWS_CHANNEL_ID, STORE_GUILD_ID, STORE_LAYOUT, UNVERIFIED_ROLE_ID, VERIFIED_ROLE_ID } from '../store/config.js';
+import { APPLICATION_ID, REVIEW_ROLE_ID, REVIEWS_CHANNEL_ID, SALES_CANCELLATION_ROLE_NAME, STORE_GUILD_ID, STORE_LAYOUT, UNVERIFIED_ROLE_ID, VERIFIED_ROLE_ID } from '../store/config.js';
 import type { StoreTransport } from '../store/transport.js';
 import { money } from '../store/product.js';
 
@@ -67,6 +67,7 @@ export async function localGuild(): Promise<Guild> {
   roleRecords.set(VERIFIED_ROLE_ID, makeRole(VERIFIED_ROLE_ID, 'Verificado'));
   roleRecords.set(REVIEW_ROLE_ID, makeRole(REVIEW_ROLE_ID, 'Cliente'));
   if (savedIds.quarantineRole) roleRecords.set(savedIds.quarantineRole, makeRole(savedIds.quarantineRole, 'Quarentena'));
+  if (savedIds.salesCancellationRole) roleRecords.set(savedIds.salesCancellationRole, makeRole(savedIds.salesCancellationRole, SALES_CANCELLATION_ROLE_NAME));
   const roles = {
     async fetch() { return roleRecords; },
     async create(input?: { name?: string }) {

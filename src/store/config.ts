@@ -12,6 +12,19 @@ export const UNVERIFIED_ROLE_ID = configuredId('DARK_UNVERIFIED_ROLE_ID', '15476
 export const VERIFIED_ROLE_ID = configuredId('DARK_VERIFIED_ROLE_ID', '1548020246537830520');
 export const REVIEW_ROLE_ID = configuredId('DARK_REVIEW_ROLE_ID', '1548068549434544159');
 export const REVIEWS_CHANNEL_ID = configuredId('DARK_REVIEWS_CHANNEL_ID', '1547806201604219015');
+export const SALES_CANCELLATION_ROLE_NAME = '!';
+
+export function salesCancellationRoleId(settings: { channelsJson: string } | null | undefined): string | null {
+  try {
+    const id: unknown = JSON.parse(settings?.channelsJson || '{}')?.salesCancellationRole;
+    return typeof id === 'string' && /^\d{17,20}$/.test(id) ? id : null;
+  } catch { return null; }
+}
+
+export function canCancelSales(actorId: string, actorRoleIds: readonly string[], settings: { channelsJson: string } | null | undefined) {
+  const roleId = salesCancellationRoleId(settings);
+  return actorId === STORE_OWNER_ID || (roleId !== null && actorRoleIds.includes(roleId));
+}
 
 export function supportRoleIds(settings: { supportRoleIds?: string | null; supportRoleId?: string | null } | null | undefined) {
   let saved: unknown = [];

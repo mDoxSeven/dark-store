@@ -1,7 +1,7 @@
 import { ChannelType, OverwriteType, PermissionFlagsBits, type Guild } from "discord.js";
 import { prisma } from "../lib/db.js";
 import {
-  REVIEW_ROLE_ID, STORE_GUILD_ID, STORE_OWNER_ID, STORE_LAYOUT, UNVERIFIED_ROLE_ID, VERIFIED_ROLE_ID, assertStoreOwner,
+  REVIEW_ROLE_ID, SALES_CANCELLATION_ROLE_NAME, STORE_GUILD_ID, STORE_OWNER_ID, STORE_LAYOUT, UNVERIFIED_ROLE_ID, VERIFIED_ROLE_ID, assertStoreOwner,
 } from "./config.js";
 
 export async function setupStore(guild: Guild, actorId: string) {
@@ -39,6 +39,14 @@ export async function setupStore(guild: Guild, actorId: string) {
       await reviewer.setPermissions([], 'Cargo usado somente para liberar o canal de avaliações');
       created.push(`Permissões do cargo ${reviewer.name}`);
     }
+    let cancellationRole = roles.get(ids.salesCancellationRole);
+    if (!cancellationRole) {
+      cancellationRole = await guild.roles.create({ name: SALES_CANCELLATION_ROLE_NAME, permissions: [], reason: 'Permissão de cancelar vendas pendentes da dark store' });
+      ids.salesCancellationRole = cancellationRole.id;
+      await prisma.digitalStore.update({ where: { guildId: guild.id }, data: { channelsJson: JSON.stringify(ids) } });
+      created.push(`Cargo ${SALES_CANCELLATION_ROLE_NAME} (cancelar vendas)`);
+    }
+    if (cancellationRole.managed || !cancellationRole.editable) throw new Error('O cargo de cancelamento precisa estar abaixo do cargo do bot e não pode ser gerenciado por uma integração.');
     let quarantine = roles.get(ids.quarantineRole);
     if (!quarantine || quarantine.managed) {
       quarantine = await guild.roles.create({ name: 'Quarentena', permissions: [], reason: 'Proteção anti-raid da dark store' });
@@ -64,6 +72,7 @@ export async function setupStore(guild: Guild, actorId: string) {
           allow: reviewOnly ? [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.SendMessages] : [],
           deny: [] },
         { id: quarantine.id, type: OverwriteType.Role, deny: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak] },
+        { id: cancellationRole.id, type: OverwriteType.Role, allow: group.key === 'tickets' ? [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] : [], deny: [] },
         { id: bot.id, type: OverwriteType.Member, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak] },
         { id: STORE_OWNER_ID, type: OverwriteType.Member, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak] },
       ];
@@ -98,6 +107,11 @@ export async function setupStore(guild: Guild, actorId: string) {
           await channel.permissionOverwrites.set(permissions(item.readOnly, reviewOnly), 'Permissões de entrada, verificação e avaliações da dark store');
         }
       }
+    }
+    const openTickets = await prisma.checkoutTicket.findMany({ where: { guildId: guild.id, deleteAt: null, status: { in: ['awaiting_confirmation', 'awaiting_payment', 'manual_fulfillment', 'delivered', 'delivery_failed'] } } });
+    for (const ticket of openTickets) {
+      const ticketChannel = channels.get(ticket.channelId);
+      if (ticketChannel?.type === ChannelType.GuildText) await ticketChannel.permissionOverwrites.edit(cancellationRole.id, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true }, { reason: 'Acesso do cargo de cancelamento de vendas' });
     }
     await prisma.digitalStore.update({ where: { guildId: STORE_GUILD_ID }, data: {
       ordersChannelId: settings.ordersChannelId ?? ids.orders, salesChannelId: settings.salesChannelId ?? ids.completed,

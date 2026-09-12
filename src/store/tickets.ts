@@ -1,10 +1,10 @@
 import { money } from './product.js';
 
-type TicketAction = 'confirm' | 'refuse' | 'notify' | 'qr' | 'close' | 'cancel' | 'cancel-confirm' | 'cancel-back';
+type TicketAction = 'confirm' | 'refuse' | 'notify' | 'qr' | 'close' | 'cancel' | 'cancel-confirm' | 'cancel-back' | 'admin-cancel' | 'admin-cancel-confirm' | 'admin-cancel-back';
 export const ticketButtonId = (action: TicketAction, ticketId: string) => `store:ticket:${action}:${ticketId}`;
 
 export function parseTicketButton(customId: string) {
-  const match = customId.match(/^store:ticket:(confirm|refuse|notify|qr|close|cancel|cancel-confirm|cancel-back):([a-zA-Z0-9_-]{10,40})$/);
+  const match = customId.match(/^store:ticket:(confirm|refuse|notify|qr|close|cancel|cancel-confirm|cancel-back|admin-cancel|admin-cancel-confirm|admin-cancel-back):([a-zA-Z0-9_-]{10,40})$/);
   return match ? { action: match[1] as TicketAction, ticketId: match[2] } : null;
 }
 
@@ -34,6 +34,16 @@ export function cancellationPrompt(ticketId: string) {
   };
 }
 
+export function adminCancellationPrompt(ticketId: string) {
+  return {
+    content: 'Cancelar esta venda pendente? Confira antes se o cliente fez o Pix. O pedido continuará registrado no painel e o ticket será removido. Esta ação não estorna dinheiro; pedidos aprovados ou com item reservado não podem ser cancelados aqui.',
+    components: [{ type: 1, components: [
+      { type: 2, style: 2, custom_id: ticketButtonId('admin-cancel-confirm', ticketId), label: 'Confirmar cancelamento da venda' },
+      { type: 2, style: 2, custom_id: ticketButtonId('admin-cancel-back', ticketId), label: 'Manter venda' },
+    ] }],
+  };
+}
+
 export function cancelledTicketMessage(orderId: string) {
   return { flags: 32768, allowed_mentions: { parse: [] }, components: [{ type: 17, accent_color: 0xaeb1b6, components: [
     { type: 10, content: `## Pedido cancelado\nPedido ${orderId} cancelado sem aprovação de pagamento. Não utilize o Pix deste pedido. O atendimento será removido em alguns segundos; o registro continua salvo no painel.` },
@@ -58,6 +68,7 @@ export function paymentTicketMessage(ticket: { id: string; userId: string; produ
       { type: 2, style: 2, custom_id: ticketButtonId('qr', ticket.id), label: 'Visualizar QR Code', disabled: !order.pixPayload },
       { type: 2, style: 2, custom_id: ticketButtonId('notify', ticket.id), label: 'Notificar administrador' },
       { type: 2, style: 2, custom_id: ticketButtonId('cancel', ticket.id), label: 'Cancelar pedido' },
+      { type: 2, style: 2, custom_id: ticketButtonId('admin-cancel', ticket.id), label: 'Cancelar venda · equipe' },
       { type: 2, style: 2, custom_id: ticketButtonId('close', ticket.id), label: 'Encerrar pedido' },
     ] },
     { type: 10, content: `-# Pedido ${order.id} · confirmação manual` },

@@ -104,6 +104,8 @@ O QR não confirma recebimento automaticamente. Antes de aprovar e entregar um i
 
 Depois de confirmar a compra, o cliente pode usar **Cancelar pedido** enquanto o pagamento ainda está pendente. O bot pede a confirmação **Ainda não paguei · cancelar**, cancela pedido e atendimento juntos e agenda a remoção do canal, mantendo o histórico no painel. Pedidos aprovados, reservados ou em entrega não podem ser cancelados pelo cliente. Se já houve Pix, o cliente deve chamar o administrador: cancelar no bot não estorna dinheiro nem invalida um código já copiado.
 
+O `/criar confirmar: Sim` cria o cargo **!**, sem conceder Administrador e sem atribuí-lo a nenhum membro. Entregue esse cargo manualmente somente à equipe autorizada: ele permite acessar os tickets e usar o botão cinza **Cancelar venda · equipe**. A autorização é conferida pelo ID do cargo registrado, não apenas pelo nome ou pela permissão genérica de Administrador; o dono da loja também pode cancelar. A venda precisa continuar pendente, sem pagamento aprovado nem estoque reservado. O bot pede confirmação, mantém o pedido no painel com o ID de quem cancelou e fecha o atendimento. Cancelamentos não liberam avaliação e não fazem estorno.
+
 Ao aprovar o pagamento no painel, o bot publica um V2 **Pagamento confirmado pela equipe** no ticket. Para estoque automático, a entrega também confirma o pagamento no privado; para estoque manual, o aviso orienta o cliente a aguardar a equipe no ticket. Esse aviso depende da aprovação administrativa, não de confirmação bancária automática.
 
 ## Acessar o painel

@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { PrismaClient } from '@prisma/client';
-import { assertStoreOwner, APPLICATION_ID, DEFAULT_SUPPORT_ROLE_IDS, MODE, REVIEW_ROLE_ID, REVIEWS_CHANNEL_ID, STORE_GUILD_ID, STORE_LAYOUT, UNVERIFIED_ROLE_ID, VERIFIED_ROLE_ID, supportRoleIds } from '../src/store/config.ts';
+import { assertStoreOwner, APPLICATION_ID, DEFAULT_SUPPORT_ROLE_IDS, MODE, REVIEW_ROLE_ID, REVIEWS_CHANNEL_ID, SALES_CANCELLATION_ROLE_NAME, STORE_GUILD_ID, STORE_LAYOUT, UNVERIFIED_ROLE_ID, VERIFIED_ROLE_ID, canCancelSales, salesCancellationRoleId, supportRoleIds } from '../src/store/config.ts';
 import { validateProduct, productMessage } from '../src/store/product.ts';
 import { sealStock, unsealStock } from '../src/store/crypto.ts';
 import { randomBytes } from 'node:crypto';
@@ -21,8 +21,8 @@ import { NITRO_BANNER_URL, NITRO_SELECT_ID, nitroCatalogMessage } from '../src/s
 import { VERIFICATION_BANNER_URL, VERIFICATION_BUTTON_ID, verificationMessage } from '../src/store/verificationMessage.ts';
 import { welcomeMessage } from '../src/store/welcomeMessage.ts';
 import { reviewRequestMessage } from '../src/store/reviewMessage.ts';
-import { cancellationPrompt, cancelledTicketMessage, confirmationTicketMessage, parseTicketButton, paymentApprovedMessage, paymentTicketMessage, ticketButtonId } from '../src/store/tickets.ts';
-import { approveOrder, cancelCheckoutOrder } from '../src/store/orders.ts';
+import { adminCancellationPrompt, cancellationPrompt, cancelledTicketMessage, confirmationTicketMessage, parseTicketButton, paymentApprovedMessage, paymentTicketMessage, ticketButtonId } from '../src/store/tickets.ts';
+import { approveOrder, cancelCheckoutOrder, cancelCheckoutSale } from '../src/store/orders.ts';
 
 const root = resolve(import.meta.dirname, '..');
 const product = { title: 'item teste', description: 'conteúdo de teste', category: 'geral', priceCents: 1000, imageUrl: '', footer: 'dark store', buttonLabel: 'comprar', accentColor: '#aeb1b6', divider: true, active: true };
@@ -95,14 +95,19 @@ test('verificação, catálogos e ticket usam Components V2 e botões cinza', ()
   assert.ok(payment.components[0].components.find(component => component.type === 1).components.some(button => button.custom_id.includes(':close:')));
   const paymentButtons = payment.components[0].components.find(component => component.type === 1).components;
   assert.ok(paymentButtons.some(button => button.custom_id.includes(':cancel:')));
+  assert.ok(paymentButtons.some(button => button.custom_id.includes(':admin-cancel:')));
+  assert.equal(paymentButtons.length, 5);
   assert.ok(paymentButtons.every(button => button.style === 2));
-  for (const action of ['cancel', 'cancel-confirm', 'cancel-back']) {
+  for (const action of ['cancel', 'cancel-confirm', 'cancel-back', 'admin-cancel', 'admin-cancel-confirm', 'admin-cancel-back']) {
     assert.deepEqual(parseTicketButton(ticketButtonId(action, ticket.id)), { action, ticketId: ticket.id });
   }
   const cancelPrompt = cancellationPrompt(ticket.id);
   assert.ok(cancelPrompt.content.includes('não estorna dinheiro'));
   assert.ok(cancelPrompt.components[0].components.every(button => button.style === 2));
   assert.ok(cancelPrompt.components[0].components.some(button => button.label.includes('Ainda não paguei')));
+  const adminPrompt = adminCancellationPrompt(ticket.id);
+  assert.ok(adminPrompt.content.includes('não estorna dinheiro'));
+  assert.ok(adminPrompt.components[0].components.every(button => button.style === 2 && button.custom_id.includes(':admin-cancel-')));
   const cancelled = cancelledTicketMessage('order_123');
   assert.equal(cancelled.flags, 32768);
   assert.ok(cancelled.components[0].components[0].content.includes('Não utilize o Pix'));
@@ -116,6 +121,20 @@ test('verificação, catálogos e ticket usam Components V2 e botões cinza', ()
   assert.equal(reviewButton.style, 5);
   assert.equal(reviewButton.url, `https://discord.com/channels/${STORE_GUILD_ID}/${REVIEWS_CHANNEL_ID}`);
   assert.ok(review.components[0].components.some(component => component.type === 10 && component.content.includes('10/10')));
+});
+
+test('cancelamento administrativo exige o ID do cargo !, salvo para o dono', () => {
+  const roleId = '1548020621760274492';
+  const settings = { channelsJson: JSON.stringify({ salesCancellationRole: roleId }) };
+  assert.equal(SALES_CANCELLATION_ROLE_NAME, '!');
+  assert.equal(salesCancellationRoleId(settings), roleId);
+  assert.equal(canCancelSales('100000000000000005', [roleId], settings), true);
+  assert.equal(canCancelSales('100000000000000005', [], settings), false);
+  assert.equal(canCancelSales('100000000000000005', ['!'], settings), false);
+  assert.equal(canCancelSales('100000000000000005', [roleId], null), false);
+  assert.equal(canCancelSales('1002774556269891694', [], null), true);
+  assert.equal(salesCancellationRoleId({ channelsJson: '{invalid' }), null);
+  assert.equal(salesCancellationRoleId({ channelsJson: JSON.stringify({ salesCancellationRole: '!' }) }), null);
 });
 
 test('produto V2 é validado e estoque criptografado é autenticado', () => {
@@ -223,6 +242,11 @@ test('painel local executa fluxo completo sem OAuth, token ou Discord', async ()
     assert.ok(state.channels.some(c => c.key === 'verificationChannel' && c.type === 0));
     assert.equal(state.channels.find(c => c.key === 'reviews').id, REVIEWS_CHANNEL_ID);
     assert.deepEqual(state.roles, []);
+    const cancellationRoleId = salesCancellationRoleId(state.settings);
+    assert.match(cancellationRoleId, /^\d{17,20}$/);
+    const repeatedSetup = await call('/api/setup', { confirmed: true });
+    assert.ok(!repeatedSetup.created.some(name => name.includes('cancelar vendas')));
+    assert.equal(salesCancellationRoleId((await (await api('/api/state', { headers: { cookie } })).json()).settings), cancellationRoleId);
     const channelId = state.channels.find(c => c.key === 'accounts').id;
     const bindTicket = async (orderId, channelId) => {
       const order = await db.digitalOrder.findUniqueOrThrow({ where: { id: orderId } });
@@ -272,6 +296,7 @@ test('painel local executa fluxo completo sem OAuth, token ou Discord', async ()
     const cancellationRecord = await db.digitalOrder.findUniqueOrThrow({ where: { id: cancellableOrder.id } });
     assert.equal(cancellationRecord.status, 'cancelled');
     assert.equal(cancellationRecord.activeKey, null);
+    assert.equal(cancellationRecord.cancelledBy, '100000000000000004');
     assert.ok(cancellationRecord.pixPayload);
     const cancelledTicket = await db.checkoutTicket.findUniqueOrThrow({ where: { id: cancellableTicket.id } });
     assert.equal(cancelledTicket.status, 'cancelled');
@@ -284,6 +309,7 @@ test('painel local executa fluxo completo sem OAuth, token ou Discord', async ()
     for (const status of ['pending', 'delivering', 'delivery_failed', 'manual_fulfillment', 'delivered']) {
       await db.digitalOrder.update({ where: { id: cancellableOrder.id }, data: { status, approvedBy: '1002774556269891694' } });
       await assert.rejects(cancelCheckoutOrder(db, '100000000000000004', cancellableTicket.id), /Pagamento aprovado/);
+      await assert.rejects(cancelCheckoutSale(db, '100000000000000005', [cancellationRoleId], cancellableTicket.id), /Pagamento aprovado/);
       assert.equal((await db.digitalOrder.findUniqueOrThrow({ where: { id: cancellableOrder.id } })).status, status);
       assert.equal((await db.checkoutTicket.findUniqueOrThrow({ where: { id: cancellableTicket.id } })).status, 'awaiting_payment');
     }
@@ -291,6 +317,7 @@ test('painel local executa fluxo completo sem OAuth, token ou Discord', async ()
     const reservedStock = await db.digitalStock.create({ data: { productId: manualProduct.id, ciphertext: 'reserved-test-only', fingerprint: 'reserved-test-only', claimedAt: new Date() } });
     await db.digitalOrder.update({ where: { id: cancellableOrder.id }, data: { status: 'pending', stockId: reservedStock.id } });
     await assert.rejects(cancelCheckoutOrder(db, '100000000000000004', cancellableTicket.id), /Pagamento aprovado/);
+    await assert.rejects(cancelCheckoutSale(db, '100000000000000005', [cancellationRoleId], cancellableTicket.id), /Pagamento aprovado/);
     assert.equal((await db.digitalStock.findUniqueOrThrow({ where: { id: reservedStock.id } })).claimedAt.getTime(), reservedStock.claimedAt.getTime());
     await db.digitalOrder.update({ where: { id: cancellableOrder.id }, data: { status: 'cancelled', stockId: null } });
     await db.digitalStock.delete({ where: { id: reservedStock.id } });
@@ -298,7 +325,24 @@ test('painel local executa fluxo completo sem OAuth, token ou Discord', async ()
     // Cancellation releases the active key so the same customer can start a new purchase.
     const replacementOrder = await call('/api/orders', { productId: manualProduct.id, userId: '100000000000000004' });
     assert.notEqual(replacementOrder.id, cancellableOrder.id);
-    await call('/api/order-action', { id: replacementOrder.id, operation: 'cancel', confirmed: true });
+    const administrativeTicket = await bindTicket(replacementOrder.id, state.channels.find(c => c.key === 'help').id);
+    await assert.rejects(cancelCheckoutSale(db, '100000000000000004', [], administrativeTicket.id), /cargo !/);
+    await assert.rejects(cancelCheckoutSale(db, '100000000000000005', ['!'], administrativeTicket.id), /cargo !/);
+    // The transaction checks the current configured role, not a stale authorization.
+    const originalSettings = await db.digitalStore.findUniqueOrThrow({ where: { guildId: STORE_GUILD_ID } });
+    await db.digitalStore.update({ where: { guildId: STORE_GUILD_ID }, data: { channelsJson: JSON.stringify({ ...JSON.parse(originalSettings.channelsJson), salesCancellationRole: '100000000000000009' }) } });
+    await assert.rejects(cancelCheckoutSale(db, '100000000000000005', [cancellationRoleId], administrativeTicket.id), /cargo !/);
+    assert.equal((await db.digitalOrder.findUniqueOrThrow({ where: { id: replacementOrder.id } })).status, 'pending');
+    await db.digitalStore.update({ where: { guildId: STORE_GUILD_ID }, data: { channelsJson: originalSettings.channelsJson } });
+    await cancelCheckoutSale(db, '100000000000000005', [cancellationRoleId], administrativeTicket.id);
+    const administrativeRecord = await db.digitalOrder.findUniqueOrThrow({ where: { id: replacementOrder.id } });
+    assert.equal(administrativeRecord.status, 'cancelled');
+    assert.equal(administrativeRecord.cancelledBy, '100000000000000005');
+    assert.equal((await db.digitalProduct.findUniqueOrThrow({ where: { id: manualProduct.id } })).manualStock, 2);
+    const ownerOrder = await call('/api/orders', { productId: manualProduct.id, userId: '100000000000000004' });
+    const ownerTicket = await bindTicket(ownerOrder.id, state.channels.find(c => c.key === 'logs').id);
+    await cancelCheckoutSale(db, '1002774556269891694', [], ownerTicket.id);
+    assert.equal((await db.digitalOrder.findUniqueOrThrow({ where: { id: ownerOrder.id } })).cancelledBy, '1002774556269891694');
     const manualOrder = await call('/api/orders', { productId: manualProduct.id, userId: '100000000000000002' });
     const manualChannelId = state.channels.find(c => c.key === 'spotify').id;
     const manualTicket = await bindTicket(manualOrder.id, manualChannelId);

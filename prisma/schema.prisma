@@ -109,6 +109,7 @@ model DigitalOrder {
   deliveryMessageId String?
   salesMessageId    String?
   approvedBy        String?
+  cancelledBy       String?
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
   product           DigitalProduct @relation(fields: [productId], references: [id])

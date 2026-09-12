@@ -1,5 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
-import { assertStoreOwner, STORE_GUILD_ID, STORE_OWNER_ID } from "./config.js";
+import { assertStoreOwner, canCancelSales, STORE_GUILD_ID, STORE_OWNER_ID } from "./config.js";
 import { unsealStock } from "./crypto.js";
 import type { StoreTransport } from "./transport.js";
 import { buildPixPayload } from "./pix.js";
@@ -95,18 +95,30 @@ export async function completeManualOrder(db: PrismaClient, actorId: string, ord
 
 export async function cancelOrder(db: PrismaClient, actorId: string, orderId: string) {
   assertStoreOwner(STORE_GUILD_ID, actorId);
-  const result = await db.digitalOrder.updateMany({ where: { id: orderId, guildId: STORE_GUILD_ID, status: "pending", stockId: null }, data: { status: "cancelled", activeKey: null } });
+  const result = await db.digitalOrder.updateMany({ where: { id: orderId, guildId: STORE_GUILD_ID, status: "pending", stockId: null, approvedBy: null }, data: { status: "cancelled", activeKey: null, cancelledBy: actorId } });
   if (!result.count) throw new Error("Somente pedidos pendentes, sem item reservado, podem ser cancelados aqui.");
 }
 
 export async function cancelCheckoutOrder(db: PrismaClient, actorId: string, ticketId: string) {
+  return cancelCheckout(db, actorId, ticketId);
+}
+
+export async function cancelCheckoutSale(db: PrismaClient, actorId: string, actorRoleIds: readonly string[], ticketId: string) {
+  return cancelCheckout(db, actorId, ticketId, actorRoleIds);
+}
+
+async function cancelCheckout(db: PrismaClient, actorId: string, ticketId: string, administrativeRoleIds?: readonly string[]) {
   return db.$transaction(async tx => {
+    if (administrativeRoleIds !== undefined) {
+      const settings = await tx.digitalStore.findUnique({ where: { guildId: STORE_GUILD_ID } });
+      if (!canCancelSales(actorId, administrativeRoleIds, settings)) throw new Error('Somente membros com o cargo ! ou o responsável pela loja podem cancelar vendas.');
+    }
     const ticket = await tx.checkoutTicket.findFirst({ where: { id: ticketId, guildId: STORE_GUILD_ID } });
-    if (!ticket || (ticket.userId !== actorId && actorId !== STORE_OWNER_ID)) throw new Error('Somente o cliente deste atendimento ou o responsável pela loja pode cancelar o pedido.');
+    if (!ticket || (administrativeRoleIds === undefined && ticket.userId !== actorId && actorId !== STORE_OWNER_ID)) throw new Error('Somente o cliente deste atendimento ou o responsável pela loja pode cancelar o pedido.');
     if (ticket.status !== 'awaiting_payment' || !ticket.orderId || ticket.deleteAt) throw new Error('Este pedido não está aguardando pagamento ou já foi encerrado.');
     const cancelled = await tx.digitalOrder.updateMany({
       where: { id: ticket.orderId, guildId: STORE_GUILD_ID, userId: ticket.userId, productId: ticket.productId, status: 'pending', stockId: null, approvedBy: null },
-      data: { status: 'cancelled', activeKey: null },
+      data: { status: 'cancelled', activeKey: null, cancelledBy: actorId },
     });
     if (cancelled.count !== 1) throw new Error('Pagamento aprovado ou pedido em processamento. Procure o administrador; este pedido não pode mais ser cancelado pelo cliente.');
     const closed = await tx.checkoutTicket.updateMany({

@@ -28,7 +28,7 @@ export async function state() {
   const [products, orders, channels, roles, settings, messages, panels, antiRaid, incidents] = await Promise.all([
     prisma.digitalProduct.findMany({ where: { guildId: STORE_GUILD_ID }, orderBy: { updatedAt: 'desc' }, take: 200, include: { _count: { select: { stock: { where: { claimedAt: null } } } } } }),
     prisma.digitalOrder.findMany({ where: { guildId: STORE_GUILD_ID }, orderBy: { createdAt: 'desc' }, take: 100,
-      select: { id: true, productId: true, userId: true, productTitle: true, priceCents: true, pixPayload: true, pixTxId: true, status: true, stockId: true, createdAt: true } }),
+      select: { id: true, productId: true, userId: true, productTitle: true, priceCents: true, pixPayload: true, pixTxId: true, status: true, stockId: true, cancelledBy: true, createdAt: true } }),
     runtimeChannels(), runtimeRoles(), prisma.digitalStore.findUnique({ where: { guildId: STORE_GUILD_ID } }),
     prisma.localMessage.count(),
     prisma.managedV2Panel.findMany({ where: { guildId: STORE_GUILD_ID }, orderBy: { updatedAt: 'desc' }, take: 100, include: { buttons: { orderBy: { position: 'asc' } } } }),

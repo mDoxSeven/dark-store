@@ -8,9 +8,9 @@ import { AntiRaidEngine, respondToRaid, type AntiRaidResponder } from '../antiRa
 import { criarCommand, executeCriar } from '../bot/criar.js';
 import { configureDiscordRuntime } from '../runtime.js';
 import {
-  APPLICATION_ID, REVIEW_ROLE_ID, REVIEWS_CHANNEL_ID, STORE_GUILD_ID, STORE_OWNER_ID, UNVERIFIED_ROLE_ID, VERIFIED_ROLE_ID, supportRoleIds,
+  APPLICATION_ID, REVIEW_ROLE_ID, REVIEWS_CHANNEL_ID, STORE_GUILD_ID, STORE_OWNER_ID, UNVERIFIED_ROLE_ID, VERIFIED_ROLE_ID, canCancelSales, salesCancellationRoleId, supportRoleIds,
 } from '../store/config.js';
-import { cancelCheckoutOrder, createOrder } from '../store/orders.js';
+import { cancelCheckoutOrder, cancelCheckoutSale, createOrder } from '../store/orders.js';
 import { getAntiRaidSettings } from '../service.js';
 import { discordRuntime } from './transport.js';
 import { auditActionName, parseRoleButton } from './ids.js';
@@ -25,7 +25,7 @@ import { refreshVerificationPanel } from '../store/verification.js';
 import { VERIFICATION_BUTTON_ID } from '../store/verificationMessage.js';
 import { welcomeMessage } from '../store/welcomeMessage.js';
 import { reviewRequestMessage } from '../store/reviewMessage.js';
-import { cancellationPrompt, cancelledTicketMessage, confirmationTicketMessage, parseTicketButton, paymentTicketMessage } from '../store/tickets.js';
+import { adminCancellationPrompt, cancellationPrompt, cancelledTicketMessage, confirmationTicketMessage, parseTicketButton, paymentTicketMessage } from '../store/tickets.js';
 const errorText = (error: unknown) => error instanceof Error ? error.message.slice(0, 1500) : 'Ação não concluída.';
 
 async function handleCriar(interaction: ChatInputCommandInteraction) {
@@ -69,7 +69,9 @@ async function handleCatalogSelection(interaction: StringSelectMenuInteraction, 
     { id: interaction.client.user.id, type: OverwriteType.Member, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ManageChannels] },
     { id: STORE_OWNER_ID, type: OverwriteType.Member, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
   ];
-  for (const roleId of supportRoleIds(settings)) {
+  const cancellationRole = salesCancellationRoleId(settings);
+  const ticketRoleIds = [...new Set([...supportRoleIds(settings), ...(cancellationRole ? [cancellationRole] : [])])];
+  for (const roleId of ticketRoleIds) {
     const role = await interaction.guild.roles.fetch(roleId).catch(() => null);
     if (role) overwrites.push({ id: role.id, type: OverwriteType.Role, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] });
   }
@@ -100,10 +102,15 @@ async function handleTicketButton(interaction: ButtonInteraction, parsed: NonNul
   if (interaction.guildId !== STORE_GUILD_ID || !interaction.guild) throw new Error('Atendimento fora do servidor autorizado.');
   const ticket = await prisma.checkoutTicket.findFirst({ where: { id: parsed.ticketId, guildId: STORE_GUILD_ID } });
   if (!ticket) throw new Error('Atendimento não encontrado.');
-  const actor = await interaction.guild.members.fetch(interaction.user.id);
+  const actor = await interaction.guild.members.fetch({ user: interaction.user.id, force: true });
   const isAdmin = interaction.user.id === STORE_OWNER_ID || actor.permissions.has(PermissionFlagsBits.Administrator);
+  const administrativeCancellation = parsed.action.startsWith('admin-cancel');
+  if (administrativeCancellation) {
+    const settings = await prisma.digitalStore.findUnique({ where: { guildId: STORE_GUILD_ID } });
+    if (!canCancelSales(actor.id, [...actor.roles.cache.keys()], settings)) throw new Error('Somente membros com o cargo ! ou o responsável pela loja podem cancelar vendas.');
+  }
   if (parsed.action === 'close' && !isAdmin) throw new Error('Somente administradores podem encerrar um pedido.');
-  if (parsed.action !== 'close' && ticket.userId !== interaction.user.id && interaction.user.id !== STORE_OWNER_ID) throw new Error('Somente o cliente deste atendimento pode usar esse botão.');
+  if (parsed.action !== 'close' && !administrativeCancellation && ticket.userId !== interaction.user.id && interaction.user.id !== STORE_OWNER_ID) throw new Error('Somente o cliente deste atendimento pode usar esse botão.');
   if (ticket.channelId !== interaction.channelId) throw new Error('Este botão não pertence a este atendimento.');
   const ticketChannel = interaction.channel;
   if (!ticketChannel?.isSendable()) throw new Error('Canal do atendimento indisponível.');
@@ -142,20 +149,22 @@ async function handleTicketButton(interaction: ButtonInteraction, parsed: NonNul
     await interaction.editReply({ content: `QR Code do pedido \`${order.id}\`.`, files: [{ attachment: await pixQrPng(order.pixPayload), name: `pix-${order.id}.png` }] });
     return;
   }
-  if (parsed.action === 'cancel-back') {
+  if (parsed.action === 'cancel-back' || parsed.action === 'admin-cancel-back') {
     await interaction.update({ content: 'Pedido mantido. Continue o atendimento no canal.', components: [] });
     return;
   }
-  if (parsed.action === 'cancel') {
+  if (parsed.action === 'cancel' || parsed.action === 'admin-cancel') {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const order = ticket.orderId ? await prisma.digitalOrder.findUnique({ where: { id: ticket.orderId } }) : null;
-    if (ticket.status !== 'awaiting_payment' || order?.status !== 'pending' || order.approvedBy) throw new Error('Somente pedidos aguardando pagamento podem ser cancelados. Se já pagou, chame o administrador.');
-    await interaction.editReply(cancellationPrompt(ticket.id) as MessageEditOptions);
+    if (ticket.status !== 'awaiting_payment' || order?.status !== 'pending' || order.approvedBy || order.stockId) throw new Error('Somente pedidos aguardando pagamento e sem item reservado podem ser cancelados. Se já pagou, chame o administrador.');
+    await interaction.editReply((administrativeCancellation ? adminCancellationPrompt(ticket.id) : cancellationPrompt(ticket.id)) as MessageEditOptions);
     return;
   }
-  if (parsed.action === 'cancel-confirm') {
+  if (parsed.action === 'cancel-confirm' || parsed.action === 'admin-cancel-confirm') {
     await interaction.deferUpdate();
-    const result = await cancelCheckoutOrder(prisma, interaction.user.id, ticket.id);
+    const result = administrativeCancellation
+      ? await cancelCheckoutSale(prisma, actor.id, [...actor.roles.cache.keys()], ticket.id)
+      : await cancelCheckoutOrder(prisma, interaction.user.id, ticket.id);
     await interaction.editReply({ content: 'Pedido cancelado. Não use o Pix antigo. O canal será removido em alguns segundos e o registro ficará salvo no painel.', components: [] });
     await ticketChannel.send(cancelledTicketMessage(result.orderId) as MessageCreateOptions).catch(() => {});
     return;
