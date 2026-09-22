@@ -23,6 +23,7 @@ import { welcomeMessage } from '../src/store/welcomeMessage.ts';
 import { reviewRequestMessage } from '../src/store/reviewMessage.ts';
 import { adminCancellationPrompt, cancellationPrompt, cancelledTicketMessage, confirmationTicketMessage, parseTicketButton, paymentApprovedMessage, paymentTicketMessage, ticketButtonId } from '../src/store/tickets.ts';
 import { approveOrder, cancelCheckoutOrder, cancelCheckoutSale } from '../src/store/orders.ts';
+import { VORTEX_GUILD_ID, VORTEX_SUPPORT_BANNER_URL, VORTEX_SUPPORT_SELECT_ID, canCloseVortexTicket, isVortexSupportSetupCommand, parseVortexSupportButton, vortexStaffMessage, vortexSupportButtonId, vortexSupportPanelMessage, vortexTicketMessage } from '../src/vortex/supportMessages.ts';
 
 const root = resolve(import.meta.dirname, '..');
 const product = { title: 'item teste', description: 'conteúdo de teste', category: 'geral', priceCents: 1000, imageUrl: '', footer: 'dark store', buttonLabel: 'comprar', accentColor: '#aeb1b6', divider: true, active: true };
@@ -135,6 +136,34 @@ test('cancelamento administrativo exige o ID do cargo !, salvo para o dono', () 
   assert.equal(canCancelSales('1002774556269891694', [], null), true);
   assert.equal(salesCancellationRoleId({ channelsJson: '{invalid' }), null);
   assert.equal(salesCancellationRoleId({ channelsJson: JSON.stringify({ salesCancellationRole: '!' }) }), null);
+});
+
+test('suporte Vortex usa V2 cinza, três assuntos e fechamento pelo atendente', () => {
+  assert.equal(VORTEX_GUILD_ID, '1551447870358560930');
+  assert.equal(isVortexSupportSetupCommand(' !CriarSuporte '), true);
+  assert.equal(isVortexSupportSetupCommand('!criarsuporte agora'), false);
+  const panel = vortexSupportPanelMessage();
+  assert.equal(panel.flags, 32768);
+  assert.match(VORTEX_SUPPORT_BANNER_URL, /^https:\/\/raw\.githubusercontent\.com\/mDoxSeven\/dark-store\/main\/public\/vortex-support-banner-v1\.png$/);
+  const select = panel.components[0].components.find(component => component.type === 1).components[0];
+  assert.equal(select.custom_id, VORTEX_SUPPORT_SELECT_ID);
+  assert.deepEqual(select.options.map(option => option.value), ['question', 'report', 'partnership']);
+  const open = { id: 'cm12345678901234567890', userId: '100000000000000001', category: 'question', status: 'OPEN', claimedBy: null, createdAt: new Date() };
+  const ticket = vortexTicketMessage(open);
+  const buttons = ticket.components[0].components.find(component => component.type === 1).components;
+  assert.equal(buttons.length, 3);
+  assert.ok(buttons.every(button => button.style === 2));
+  assert.equal(buttons.find(button => button.custom_id.includes(':close:')).disabled, true);
+  assert.deepEqual(parseVortexSupportButton(vortexSupportButtonId('claim', open.id)), { action: 'claim', ticketId: open.id });
+  assert.equal(parseVortexSupportButton('vortex:support:delete:cm12345678901234567890'), null);
+  const claimed = { ...open, status: 'CLAIMED', claimedBy: '100000000000000002', channelId: '100000000000000003' };
+  const staff = vortexStaffMessage(claimed, '100000000000000004');
+  assert.ok(staff.components[0].components[0].content.includes('<@100000000000000001>'));
+  assert.equal(staff.components[0].components.find(component => component.type === 1).components.find(button => button.custom_id.includes(':close:')).disabled, false);
+  assert.equal(canCloseVortexTicket(claimed, { id: '100000000000000002', administrator: false, support: true }), true);
+  assert.equal(canCloseVortexTicket(claimed, { id: '100000000000000004', administrator: false, support: true }), false);
+  assert.equal(canCloseVortexTicket(claimed, { id: '100000000000000004', administrator: true, support: false }), true);
+  assert.equal(canCloseVortexTicket(open, { id: '100000000000000004', administrator: true, support: false }), false);
 });
 
 test('produto V2 é validado e estoque criptografado é autenticado', () => {

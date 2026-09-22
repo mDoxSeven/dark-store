@@ -205,3 +205,41 @@ model SecurityIncident {
 
   @@index([guildId, createdAt])
 }
+
+model VortexSupportConfig {
+  guildId          String                @id
+  supportRoleId    String?
+  publicCategoryId String?
+  ticketCategoryId String?
+  panelChannelId   String?
+  staffChannelId   String?
+  panelMessageId   String?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  tickets          VortexSupportTicket[]
+}
+
+model VortexSupportTicket {
+  id              String              @id @default(cuid())
+  guildId         String
+  userId          String
+  category        String
+  status          String              @default("OPEN")
+  activeKey       String?             @unique
+  channelId       String?             @unique
+  ticketMessageId String?
+  staffMessageId  String?
+  claimedBy       String?
+  claimedAt       DateTime?
+  notifiedAt      DateTime?
+  closedBy        String?
+  closedAt        DateTime?
+  deleteAt        DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  config          VortexSupportConfig @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  @@index([guildId, status, createdAt])
+  @@index([guildId, userId, status])
+  @@index([deleteAt])
+}

@@ -26,12 +26,21 @@ Aplicação Discord e painel privado independentes do empty.
 - quarentena, expulsão ou banimento configuráveis;
 - dono e o próprio bot protegidos das respostas automáticas;
 - simulador anti-raid local para validar os limites sem punir membros.
+- central de suporte isolada para o servidor Vortex, criada por `!criarsuporte`.
 
 ## Configurar o Discord
 
-No Discord Developer Portal, habilite `Guild Install`, os escopos `bot` e `applications.commands`, e o `Server Members Intent`. Na primeira instalação use `Administrator`; depois que a estrutura estiver pronta, reduza as permissões com cuidado.
+No Discord Developer Portal, habilite `Guild Install`, os escopos `bot` e `applications.commands`, o `Server Members Intent` e o `Message Content Intent` (necessário para `!criarsuporte`). Na primeira instalação use `Administrator`; depois que a estrutura estiver pronta, reduza as permissões com cuidado.
 
 O bot valida no início se o token pertence à aplicação esperada, se o dono está no servidor e se possui as permissões necessárias. O comando é registrado somente no servidor configurado.
+
+## Suporte Vortex
+
+Com o mesmo bot instalado no servidor `1551447870358560930`, um administrador executa `!criarsuporte`. O comando funciona somente nesse servidor e pode ser repetido: ele reutiliza os IDs salvos, corrige permissões e não duplica a estrutura válida.
+
+Ele cria as categorias `SUPORTE • VORTEX` e `TICKETS • VORTEX`, os canais `abrir-ticket` e `fila-suporte`, o cargo `Suporte` quando necessário e publica o painel Components V2 com a arte pública da Vortex. Atribua o cargo criado apenas à equipe autorizada.
+
+O painel oferece **Dúvidas**, **Denúncia** e **Parceria**. Cada escolha cria um canal privado, menciona o autor no ticket e comunica o cargo de suporte na fila interna. A equipe pode assumir o atendimento e notificar o membro no privado. Depois de assumido, somente o atendente responsável — ou um administrador — pode fechar. O encerramento avisa o membro, mantém o registro no banco e exclui o canal automaticamente.
 
 ## Configurar a VPS
 

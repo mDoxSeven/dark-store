@@ -26,6 +26,8 @@ import { VERIFICATION_BUTTON_ID } from '../store/verificationMessage.js';
 import { welcomeMessage } from '../store/welcomeMessage.js';
 import { reviewRequestMessage } from '../store/reviewMessage.js';
 import { adminCancellationPrompt, cancellationPrompt, cancelledTicketMessage, confirmationTicketMessage, parseTicketButton, paymentTicketMessage } from '../store/tickets.js';
+import { handleVortexSupportButton, handleVortexSupportCommand, handleVortexSupportSelect, sweepVortexSupportTickets } from '../vortex/support.js';
+import { VORTEX_SUPPORT_SELECT_ID } from '../vortex/supportMessages.js';
 const errorText = (error: unknown) => error instanceof Error ? error.message.slice(0, 1500) : 'Ação não concluída.';
 
 async function handleCriar(interaction: ChatInputCommandInteraction) {
@@ -319,7 +321,7 @@ function responder(guild: Guild): AntiRaidResponder {
 }
 
 export async function startDiscord(token: string) {
-  const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildModeration] });
+  const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildModeration, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
   const raid = new AntiRaidEngine();
   const notifyCooldowns = new Map<string, number>();
   const responseCooldowns = new Map<string, number>();
@@ -335,7 +337,9 @@ export async function startDiscord(token: string) {
   };
   client.on(Events.InteractionCreate, interaction => {
     void (async () => {
-      if (interaction.isChatInputCommand() && interaction.commandName === 'criar') await handleCriar(interaction);
+      if (interaction.isStringSelectMenu() && interaction.customId === VORTEX_SUPPORT_SELECT_ID) await handleVortexSupportSelect(interaction);
+      else if (interaction.isButton() && interaction.customId.startsWith('vortex:support:')) await handleVortexSupportButton(interaction);
+      else if (interaction.isChatInputCommand() && interaction.commandName === 'criar') await handleCriar(interaction);
       else if (interaction.isStringSelectMenu() && interaction.customId === SPOTIFY_SELECT_ID) await handleCatalogSelection(interaction, 'spotify');
       else if (interaction.isStringSelectMenu() && interaction.customId === DISCORD_SELECT_ID) await handleCatalogSelection(interaction, 'discord');
       else if (interaction.isStringSelectMenu() && interaction.customId === NITRO_SELECT_ID) await handleCatalogSelection(interaction, 'nitro');
@@ -354,6 +358,10 @@ export async function startDiscord(token: string) {
         else await interaction.reply({ content: message, flags: MessageFlags.Ephemeral }).catch(() => {});
       }
     });
+  });
+  client.on(Events.MessageCreate, message => {
+    if (message.author.bot || !message.inGuild()) return;
+    void handleVortexSupportCommand(message).catch(error => console.error(`vortex suporte comando: ${errorText(error)}`));
   });
   client.on(Events.GuildMemberAdd, joined => {
     void (async () => {
@@ -397,7 +405,9 @@ export async function startDiscord(token: string) {
         connected.user.setPresence({ status: 'online', activities: [{ name: 'a dark store', type: ActivityType.Watching }] });
         configureDiscordRuntime(discordRuntime(connected, guild));
         await sweepClosedTickets(connected);
+        await sweepVortexSupportTickets(connected);
         setInterval(() => void sweepClosedTickets(connected).catch(error => console.error(`tickets: ${errorText(error)}`)), 15_000).unref();
+        setInterval(() => void sweepVortexSupportTickets(connected).catch(error => console.error(`vortex tickets: ${errorText(error)}`)), 10_000).unref();
         console.log(`Discord conectado como ${connected.user.tag}; /criar registrado no servidor autorizado.`);
         resolveReady(connected);
       } catch (error) { connected.destroy(); reject(error); }
