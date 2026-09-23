@@ -1,8 +1,9 @@
 import { PermissionFlagsBits, type Message, type MessageCreateOptions } from 'discord.js';
 
-export const ALTA_GUILD_ID = '1161745657976062042';
+export const ALTA_GUILD_ID = '1309533710156169337';
+export const RISE_GUIDE_GUILD_ID = '1161745657976062042';
 export const RISE_GUIDE_CHANNEL_ID = '1551676932444397649';
-export const RISE_GUIDE_URL = `https://discord.com/channels/${ALTA_GUILD_ID}/${RISE_GUIDE_CHANNEL_ID}`;
+export const RISE_GUIDE_URL = `https://discord.com/channels/${RISE_GUIDE_GUILD_ID}/${RISE_GUIDE_CHANNEL_ID}`;
 export const RISE_MEDIA_URL = 'https://i.imgur.com/SCz54lv.jpeg';
 
 const COMMANDS = new Set(['!avisorise', '!riseaviso']);

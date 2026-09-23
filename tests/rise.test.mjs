@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  ALTA_GUILD_ID, RISE_GUIDE_CHANNEL_ID, RISE_GUIDE_URL, RISE_MEDIA_URL,
+  ALTA_GUILD_ID, RISE_GUIDE_GUILD_ID, RISE_GUIDE_CHANNEL_ID, RISE_GUIDE_URL, RISE_MEDIA_URL,
   isAltaRiseCommand, parseRiseRoleArgument, riseAnnouncement,
 } from '../src/alta/rise.ts';
 
 test('aviso rise fica restrito a Alta e usa os links informados', () => {
-  assert.equal(ALTA_GUILD_ID, '1161745657976062042');
+  assert.equal(ALTA_GUILD_ID, '1309533710156169337');
+  assert.equal(RISE_GUIDE_GUILD_ID, '1161745657976062042');
   assert.equal(RISE_GUIDE_CHANNEL_ID, '1551676932444397649');
   assert.equal(RISE_GUIDE_URL, 'https://discord.com/channels/1161745657976062042/1551676932444397649');
   assert.equal(RISE_MEDIA_URL, 'https://i.imgur.com/SCz54lv.jpeg');
