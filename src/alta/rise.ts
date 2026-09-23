@@ -1,4 +1,7 @@
-import { PermissionFlagsBits, type Message, type MessageCreateOptions } from 'discord.js';
+import {
+  MessageFlags, PermissionFlagsBits, SlashCommandBuilder,
+  type ChatInputCommandInteraction, type Message, type MessageCreateOptions,
+} from 'discord.js';
 
 export const ALTA_GUILD_ID = '1309533710156169337';
 export const RISE_GUIDE_GUILD_ID = '1161745657976062042';
@@ -7,6 +10,15 @@ export const RISE_GUIDE_URL = `https://discord.com/channels/${RISE_GUIDE_GUILD_I
 export const RISE_MEDIA_URL = 'https://i.imgur.com/SCz54lv.jpeg';
 
 const COMMANDS = new Set(['!avisorise', '!riseaviso']);
+
+export const altaRiseCommand = new SlashCommandBuilder()
+  .setName('avisorise')
+  .setDescription('Publica o aviso V2 da recompensa /rise.')
+  .setDMPermission(false)
+  .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+  .addRoleOption(option => option
+    .setName('cargo')
+    .setDescription('Cargo a notificar uma única vez (opcional)'));
 
 export interface RiseRoleArgument {
   roleId: string;
@@ -101,4 +113,34 @@ export async function handleAltaRiseCommand(message: Message) {
 
   await message.channel.send(riseAnnouncement(role?.id, roleArgument?.notifyInAnnouncement));
   return true;
+}
+
+export async function executeAltaRiseCommand(interaction: ChatInputCommandInteraction) {
+  if (!interaction.inCachedGuild() || interaction.guildId !== ALTA_GUILD_ID) {
+    await interaction.reply({ content: 'Este anúncio funciona somente no servidor Alta Cúpula.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+  if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
+    await interaction.reply({ content: 'Você precisa da permissão **Gerenciar servidor**.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+  if (!interaction.channel?.isSendable()) {
+    await interaction.reply({ content: 'Use este comando em um canal de texto.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  const role = interaction.options.getRole('cargo');
+  if (role && !interaction.appPermissions?.has(PermissionFlagsBits.MentionEveryone)) {
+    await interaction.reply({
+      content: 'O bot precisa da permissão **Mencionar @everyone, @here e todos os cargos** para notificar esse cargo.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  await interaction.channel.send(riseAnnouncement(role?.id));
+  await interaction.editReply(role
+    ? `Aviso publicado com uma notificação para <@&${role.id}>.`
+    : 'Aviso publicado sem notificações.');
 }

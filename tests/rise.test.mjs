@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { PermissionFlagsBits } from 'discord.js';
 import {
-  ALTA_GUILD_ID, RISE_GUIDE_GUILD_ID, RISE_GUIDE_CHANNEL_ID, RISE_GUIDE_URL, RISE_MEDIA_URL,
+  ALTA_GUILD_ID, RISE_GUIDE_GUILD_ID, RISE_GUIDE_CHANNEL_ID, RISE_GUIDE_URL, RISE_MEDIA_URL, altaRiseCommand,
   isAltaRiseCommand, parseRiseRoleArgument, riseAnnouncement,
 } from '../src/alta/rise.ts';
 
@@ -15,6 +16,14 @@ test('aviso rise fica restrito a Alta e usa os links informados', () => {
   assert.match(serialized, /SCz54lv\.jpeg/);
   assert.match(serialized, /Ver passo a passo/);
   assert.match(serialized, /1551676932444397649/);
+});
+
+test('slash avisorise exige gerenciar servidor e oferece cargo opcional', () => {
+  const command = altaRiseCommand.toJSON();
+  assert.equal(command.name, 'avisorise');
+  assert.equal(command.dm_permission, false);
+  assert.equal(command.default_member_permissions, PermissionFlagsBits.ManageGuild.toString());
+  assert.deepEqual(command.options?.map(option => [option.name, option.required ?? false]), [['cargo', false]]);
 });
 
 test('reconhece somente os comandos rise completos', () => {

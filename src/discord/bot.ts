@@ -28,7 +28,7 @@ import { reviewRequestMessage } from '../store/reviewMessage.js';
 import { adminCancellationPrompt, cancellationPrompt, cancelledTicketMessage, confirmationTicketMessage, parseTicketButton, paymentTicketMessage } from '../store/tickets.js';
 import { handleVortexSupportButton, handleVortexSupportCommand, handleVortexSupportSelect, sweepVortexSupportTickets } from '../vortex/support.js';
 import { VORTEX_SUPPORT_SELECT_ID } from '../vortex/supportMessages.js';
-import { handleAltaRiseCommand } from '../alta/rise.js';
+import { ALTA_GUILD_ID, altaRiseCommand, executeAltaRiseCommand, handleAltaRiseCommand } from '../alta/rise.js';
 const errorText = (error: unknown) => error instanceof Error ? error.message.slice(0, 1500) : 'Ação não concluída.';
 
 async function handleCriar(interaction: ChatInputCommandInteraction) {
@@ -340,6 +340,7 @@ export async function startDiscord(token: string) {
     void (async () => {
       if (interaction.isStringSelectMenu() && interaction.customId === VORTEX_SUPPORT_SELECT_ID) await handleVortexSupportSelect(interaction);
       else if (interaction.isButton() && interaction.customId.startsWith('vortex:support:')) await handleVortexSupportButton(interaction);
+      else if (interaction.isChatInputCommand() && interaction.commandName === 'avisorise') await executeAltaRiseCommand(interaction);
       else if (interaction.isChatInputCommand() && interaction.commandName === 'criar') await handleCriar(interaction);
       else if (interaction.isStringSelectMenu() && interaction.customId === SPOTIFY_SELECT_ID) await handleCatalogSelection(interaction, 'spotify');
       else if (interaction.isStringSelectMenu() && interaction.customId === DISCORD_SELECT_ID) await handleCatalogSelection(interaction, 'discord');
@@ -406,6 +407,14 @@ export async function startDiscord(token: string) {
         const missing = me.permissions.missing(required);
         if (missing.length) throw new Error(`Permissões ausentes no servidor: ${missing.join(', ')}.`);
         await guild.commands.set([criarCommand.toJSON()]);
+        const altaGuild = await connected.guilds.fetch(ALTA_GUILD_ID).catch(() => null);
+        if (altaGuild) {
+          await altaGuild.commands.create(altaRiseCommand.toJSON())
+            .then(() => console.log(`/avisorise registrado no servidor ${ALTA_GUILD_ID}.`))
+            .catch(error => console.error(`/avisorise não registrado no servidor ${ALTA_GUILD_ID}: ${errorText(error)}`));
+        } else {
+          console.warn(`Angel sem acesso ao servidor ${ALTA_GUILD_ID}; !avisorise e /avisorise indisponíveis nele.`);
+        }
         connected.user.setPresence({ status: 'online', activities: [{ name: 'a dark store', type: ActivityType.Watching }] });
         configureDiscordRuntime(discordRuntime(connected, guild));
         await sweepClosedTickets(connected);
