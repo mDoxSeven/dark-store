@@ -28,6 +28,7 @@ import { reviewRequestMessage } from '../store/reviewMessage.js';
 import { adminCancellationPrompt, cancellationPrompt, cancelledTicketMessage, confirmationTicketMessage, parseTicketButton, paymentTicketMessage } from '../store/tickets.js';
 import { handleVortexSupportButton, handleVortexSupportCommand, handleVortexSupportSelect, sweepVortexSupportTickets } from '../vortex/support.js';
 import { VORTEX_SUPPORT_SELECT_ID } from '../vortex/supportMessages.js';
+import { handleAltaRiseCommand } from '../alta/rise.js';
 const errorText = (error: unknown) => error instanceof Error ? error.message.slice(0, 1500) : 'Ação não concluída.';
 
 async function handleCriar(interaction: ChatInputCommandInteraction) {
@@ -361,7 +362,10 @@ export async function startDiscord(token: string) {
   });
   client.on(Events.MessageCreate, message => {
     if (message.author.bot || !message.inGuild()) return;
-    void handleVortexSupportCommand(message).catch(error => console.error(`vortex suporte comando: ${errorText(error)}`));
+    void (async () => {
+      if (await handleAltaRiseCommand(message)) return;
+      await handleVortexSupportCommand(message);
+    })().catch(error => console.error(`comando por prefixo: ${errorText(error)}`));
   });
   client.on(Events.GuildMemberAdd, joined => {
     void (async () => {
