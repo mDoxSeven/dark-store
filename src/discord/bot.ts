@@ -29,6 +29,10 @@ import { adminCancellationPrompt, cancellationPrompt, cancelledTicketMessage, co
 import { handleVortexSupportButton, handleVortexSupportCommand, handleVortexSupportSelect, sweepVortexSupportTickets } from '../vortex/support.js';
 import { VORTEX_SUPPORT_SELECT_ID } from '../vortex/supportMessages.js';
 import { ALTA_GUILD_ID, altaRiseCommand, executeAltaRiseCommand, handleAltaRiseCommand } from '../alta/rise.js';
+import {
+  handlePasstimeButton, handlePasstimeCommand, handlePasstimeModal, startPasstimeReminders,
+} from '../passtime/module.js';
+import { PASSTIME_GUILD_ID } from '../passtime/config.js';
 const errorText = (error: unknown) => error instanceof Error ? error.message.slice(0, 1500) : 'Ação não concluída.';
 
 async function handleCriar(interaction: ChatInputCommandInteraction) {
@@ -338,7 +342,9 @@ export async function startDiscord(token: string) {
   };
   client.on(Events.InteractionCreate, interaction => {
     void (async () => {
-      if (interaction.isStringSelectMenu() && interaction.customId === VORTEX_SUPPORT_SELECT_ID) await handleVortexSupportSelect(interaction);
+      if (interaction.isButton() && interaction.customId.startsWith('passtime:')) await handlePasstimeButton(interaction);
+      else if (interaction.isModalSubmit() && interaction.customId.startsWith('passtime:')) await handlePasstimeModal(interaction);
+      else if (interaction.isStringSelectMenu() && interaction.customId === VORTEX_SUPPORT_SELECT_ID) await handleVortexSupportSelect(interaction);
       else if (interaction.isButton() && interaction.customId.startsWith('vortex:support:')) await handleVortexSupportButton(interaction);
       else if (interaction.isChatInputCommand() && interaction.commandName === 'avisorise') await executeAltaRiseCommand(interaction);
       else if (interaction.isChatInputCommand() && interaction.commandName === 'criar') await handleCriar(interaction);
@@ -364,6 +370,7 @@ export async function startDiscord(token: string) {
   client.on(Events.MessageCreate, message => {
     if (message.author.bot || !message.inGuild()) return;
     void (async () => {
+      if (await handlePasstimeCommand(message)) return;
       if (await handleAltaRiseCommand(message)) return;
       await handleVortexSupportCommand(message);
     })().catch(error => console.error(`comando por prefixo: ${errorText(error)}`));
@@ -414,6 +421,13 @@ export async function startDiscord(token: string) {
             .catch(error => console.error(`/avisorise não registrado no servidor ${ALTA_GUILD_ID}: ${errorText(error)}`));
         } else {
           console.warn(`Angel sem acesso ao servidor ${ALTA_GUILD_ID}; !avisorise e /avisorise indisponíveis nele.`);
+        }
+        const passtimeGuild = await connected.guilds.fetch(PASSTIME_GUILD_ID).catch(() => null);
+        if (passtimeGuild) {
+          startPasstimeReminders(connected);
+          console.log(`Módulo Passtime disponível no servidor ${PASSTIME_GUILD_ID}.`);
+        } else {
+          console.warn(`Angel sem acesso ao servidor Passtime ${PASSTIME_GUILD_ID}.`);
         }
         connected.user.setPresence({ status: 'online', activities: [{ name: 'a dark store', type: ActivityType.Watching }] });
         configureDiscordRuntime(discordRuntime(connected, guild));

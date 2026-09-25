@@ -26,7 +26,8 @@ Aplicação Discord e painel privado independentes do empty.
 - quarentena, expulsão ou banimento configuráveis;
 - dono e o próprio bot protegidos das respostas automáticas;
 - simulador anti-raid local para validar os limites sem punir membros.
-- central de suporte isolada para o servidor Vortex, criada por `!criarsuporte`.
+- central de suporte isolada para o servidor Vortex, criada por `!criarsuporte`;
+- módulo independente de bancas, cronograma e gestão para o servidor Passtime.
 
 ## Configurar o Discord
 
@@ -41,6 +42,14 @@ Com o mesmo bot instalado no servidor `1551447870358560930`, um administrador ex
 Ele cria as categorias `SUPORTE • VORTEX` e `TICKETS • VORTEX`, os canais `abrir-ticket` e `fila-suporte`, o cargo `Suporte` quando necessário e publica o painel Components V2 com a arte pública da Vortex. Atribua o cargo criado apenas à equipe autorizada.
 
 O painel oferece **Dúvidas**, **Denúncia** e **Parceria**. Cada escolha cria um canal privado, menciona o autor no ticket e comunica o cargo de suporte na fila interna. A equipe pode assumir o atendimento e notificar o membro no privado. Depois de assumido, somente o atendente responsável — ou um administrador — pode fechar. O encerramento avisa o membro, mantém o registro no banco e exclui o canal automaticamente.
+
+## Passtime
+
+O módulo funciona somente no servidor `1506789977927712808`. O usuário `1002774556269891694` ou o dono do servidor executa `!passtime` para criar ou sincronizar a estrutura. O comando é idempotente: reconhece os canais decorados que já existem, preserva seus nomes e símbolos, reaproveita as artes publicadas em `solicitar-banca`, `identificação`, `pontuação` e `equipe` e usa os emojis personalizados encontrados no próprio servidor.
+
+O painel de banca abre um formulário para emoji e nome, cria um canal privado para o membro e libera acesso aos cargos **Minion • Corretor**, **Minion • Decorador** e **Passtime • Gestão**. As bancas podem ser arquivadas, desarquivadas ou apagadas pela gestão.
+
+Comandos administrativos: `!apelido`, `!embed`, `!logs`, `!verificacao`, `!clear`, `!membersrole`, `!anuncio`, `!banca`, `!banca_apagar`, `!banca_arquivar`, `!banca_desarquivar`, `!cronograma`, `!lembrete`, `!atualizar_cronograma`, `!limpar_cronograma`, `!editar_horarios` e `!equipe`. Os lembretes usam o horário de Brasília e os editores abrem formulários privados. O `Message Content Intent` e o `Server Members Intent` precisam estar habilitados.
 
 ## Configurar a VPS
 

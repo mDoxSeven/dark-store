@@ -243,3 +243,87 @@ model VortexSupportTicket {
   @@index([guildId, userId, status])
   @@index([deleteAt])
 }
+
+model PasstimeConfig {
+  guildId              String                  @id
+  ownerId              String
+  logsChannelId        String?
+  memberRoleId         String?
+  correctorRoleId      String?
+  decoratorRoleId      String?
+  managementRoleId     String?
+  bankCategoryId       String?
+  archiveCategoryId    String?
+  requestChannelId     String?
+  verificationChannelId String?
+  identificationChannelId String?
+  pointsChannelId      String?
+  teamChannelId        String?
+  scheduleChannelId    String?
+  requestMessageId     String?
+  verificationMessageId String?
+  identificationMessageId String?
+  pointsMessageId      String?
+  teamMessageId        String?
+  scheduleMessageId    String?
+  requestBannerUrl     String?
+  identificationBannerUrl String?
+  pointsBannerUrl      String?
+  teamBannerUrl        String?
+  leaderId             String?
+  deputyLeaderId       String?
+  managerId            String?
+  supervisorId         String?
+  nickname             String?
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+  banks                PasstimeBank[]
+  scheduleEntries      PasstimeScheduleEntry[]
+  reminders            PasstimeReminder[]
+}
+
+model PasstimeBank {
+  id        String         @id @default(cuid())
+  guildId   String
+  userId    String
+  channelId String?        @unique
+  name      String
+  emoji     String
+  status    String         @default("ACTIVE")
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  config    PasstimeConfig @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  @@unique([guildId, userId])
+  @@index([guildId, status])
+}
+
+model PasstimeScheduleEntry {
+  id        String         @id @default(cuid())
+  guildId   String
+  day       String
+  time      String
+  label     String
+  position  Int            @default(0)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  config    PasstimeConfig @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  @@index([guildId, day, time])
+}
+
+model PasstimeReminder {
+  id           String         @id @default(cuid())
+  guildId      String
+  channelId    String
+  time         String
+  message      String
+  enabled      Boolean        @default(true)
+  lastSentDate String?
+  createdBy    String
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  config       PasstimeConfig @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  @@index([guildId, enabled, time])
+}
