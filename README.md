@@ -49,6 +49,8 @@ O módulo funciona somente no servidor `1506789977927712808`. Os usuários `1002
 
 O painel de banca abre um formulário para emoji e nome, cria um canal privado para o membro e libera acesso aos cargos **Minion • Corretor**, **Minion • Decorador** e **Passtime • Gestão**. As bancas podem ser arquivadas, desarquivadas ou apagadas pela gestão.
 
+Para reconhecer outra pessoa como gestora, atribua a ela o cargo **Passtime • Gestão** criado pelo `!passtime`. O Angel confere o ID salvo desse cargo, portanto não é necessário cadastrar o ID individual da pessoa no código. Administradores, membros com **Gerenciar servidor** e os dois responsáveis fixos também continuam autorizados.
+
 Comandos administrativos: `!apelido`, `!embed`, `!logs`, `!verificacao`, `!clear`, `!membersrole`, `!anuncio`, `!banca`, `!banca_apagar`, `!banca_arquivar`, `!banca_desarquivar`, `!cronograma`, `!lembrete`, `!atualizar_cronograma`, `!limpar_cronograma`, `!editar_horarios` e `!equipe`. Os lembretes usam o horário de Brasília e os editores abrem formulários privados. O `Message Content Intent` e o `Server Members Intent` precisam estar habilitados.
 
 ## Configurar a VPS

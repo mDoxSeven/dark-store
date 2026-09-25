@@ -77,11 +77,18 @@ async function discoverChannelArt(channel: TextChannel, configured: string | nul
   return fallback;
 }
 
-const isController = (member: GuildMember | null | undefined) =>
+const isPrimaryController = (member: GuildMember | null | undefined) =>
   Boolean(member && isPasstimeManager(member.id)) || Boolean(member?.permissions.has(PermissionFlagsBits.Administrator)) || Boolean(member?.permissions.has(PermissionFlagsBits.ManageGuild));
 
-const requireController = (member: GuildMember | null | undefined) => {
-  if (!isController(member)) throw new Error('Somente a gestão do servidor pode usar este comando.');
+async function isController(member: GuildMember | null | undefined) {
+  if (isPrimaryController(member)) return true;
+  if (!member) return false;
+  const config = await getConfig();
+  return Boolean(config?.managementRoleId && member.roles.cache.has(config.managementRoleId));
+}
+
+const requireController = async (member: GuildMember | null | undefined) => {
+  if (!await isController(member)) throw new Error('Somente a gestão do servidor pode usar este comando.');
 };
 
 const fetchText = async (guild: Guild, id: string | null | undefined) => {
@@ -410,7 +417,7 @@ async function runPasstimeCommand(message: Message<true>) {
   const raw = message.content.trim();
   const [rawCommand, ...args] = raw.split(/\s+/);
   const command = rawCommand.toLocaleLowerCase('pt-BR');
-  if (command !== '!passtime') requireController(message.member);
+  if (command !== '!passtime') await requireController(message.member);
 
   if (command === '!passtime') {
     const result = await setupPasstime(message);
@@ -447,7 +454,6 @@ async function runPasstimeCommand(message: Message<true>) {
     return;
   }
   if (command === '!clear') {
-    if (!message.member?.permissions.has(PermissionFlagsBits.ManageMessages) && !isPasstimeManager(message.author.id)) throw new Error('Você precisa de **Gerenciar mensagens**.');
     const count = Number.parseInt(args[0] ?? '', 10);
     if (!Number.isInteger(count) || count < 1 || count > 100) throw new Error('Use `!clear 1` até `!clear 100`.');
     const channel = await currentText(message);
@@ -602,7 +608,7 @@ export async function handlePasstimeButton(interaction: ButtonInteraction) {
     await interaction.reply({ content: 'Este editor pertence a outro membro.', flags: MessageFlags.Ephemeral });
     return true;
   }
-  if (!isController(await interaction.guild.members.fetch(interaction.user.id))) throw new Error('Somente a gestão pode usar este editor.');
+  if (!await isController(await interaction.guild.members.fetch(interaction.user.id))) throw new Error('Somente a gestão pode usar este editor.');
   if (interaction.customId.startsWith(`${PASSTIME_IDS.embedOpen}:`)) {
     await interaction.showModal(new ModalBuilder().setCustomId(`${PASSTIME_IDS.embedModal}:${ownerId}`).setTitle('Montar mensagem V2').addComponents(
       modalField('title', 'Título', TextInputStyle.Short),
@@ -644,7 +650,7 @@ export async function handlePasstimeModal(interaction: ModalSubmitInteraction) {
   const ownerId = encodedUser(interaction.customId);
   if (ownerId !== interaction.user.id) throw new Error('Este formulário pertence a outro membro.');
   const member = await interaction.guild.members.fetch(interaction.user.id);
-  if (!isController(member)) throw new Error('Somente a gestão pode usar este formulário.');
+  if (!await isController(member)) throw new Error('Somente a gestão pode usar este formulário.');
   if (!interaction.channel?.isSendable()) throw new Error('Canal de destino indisponível.');
 
   if (interaction.customId.startsWith(`${PASSTIME_IDS.embedModal}:`)) {
