@@ -1,5 +1,10 @@
 export const PASSTIME_GUILD_ID = '1506789977927712808';
 export const PASSTIME_OWNER_ID = '1002774556269891694';
+export const PASSTIME_MANAGER_IDS = new Set([
+  PASSTIME_OWNER_ID,
+  '1516915772192985088',
+]);
+export const isPasstimeManager = (userId: string) => PASSTIME_MANAGER_IDS.has(userId);
 export const PASSTIME_ACCENT = 0xffdd19;
 export const PASSTIME_TIME_ZONE = 'America/Sao_Paulo';
 

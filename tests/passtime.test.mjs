@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
-  PASSTIME_GUILD_ID, PASSTIME_OWNER_ID, isPasstimeCommand, normalizeDay, validTime,
+  PASSTIME_GUILD_ID, PASSTIME_OWNER_ID, isPasstimeCommand, isPasstimeManager, normalizeDay, validTime,
 } from '../src/passtime/config.ts';
 import { PASSTIME_IMPLEMENTED_COMMANDS } from '../src/passtime/module.ts';
 import { bankRequestMessage, identificationMessage, pointsMessage, teamMessage } from '../src/passtime/messages.ts';
@@ -16,6 +16,9 @@ const requested = [
 test('módulo Passtime fica isolado no servidor e usuário autorizados', () => {
   assert.equal(PASSTIME_GUILD_ID, '1506789977927712808');
   assert.equal(PASSTIME_OWNER_ID, '1002774556269891694');
+  assert.equal(isPasstimeManager('1002774556269891694'), true);
+  assert.equal(isPasstimeManager('1516915772192985088'), true);
+  assert.equal(isPasstimeManager('1516915772192985000'), false);
   for (const command of requested) assert.ok(PASSTIME_IMPLEMENTED_COMMANDS.includes(command), command);
   assert.ok(PASSTIME_IMPLEMENTED_COMMANDS.includes('!passtime'));
   assert.ok(PASSTIME_IMPLEMENTED_COMMANDS.includes('!equipe'));

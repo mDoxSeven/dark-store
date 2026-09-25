@@ -45,7 +45,7 @@ O painel oferece **Dúvidas**, **Denúncia** e **Parceria**. Cada escolha cria u
 
 ## Passtime
 
-O módulo funciona somente no servidor `1506789977927712808`. O usuário `1002774556269891694` ou o dono do servidor executa `!passtime` para criar ou sincronizar a estrutura. O comando é idempotente: reconhece os canais decorados que já existem, preserva seus nomes e símbolos, reaproveita as artes publicadas em `solicitar-banca`, `identificação`, `pontuação` e `equipe` e usa os emojis personalizados encontrados no próprio servidor.
+O módulo funciona somente no servidor `1506789977927712808`. Os usuários `1002774556269891694` e `1516915772192985088`, ou o dono do servidor, podem executar `!passtime` para criar ou sincronizar a estrutura. O comando é idempotente: reconhece os canais decorados que já existem, preserva seus nomes e símbolos, reaproveita as artes publicadas em `solicitar-banca`, `identificação`, `pontuação` e `equipe` e usa os emojis personalizados encontrados no próprio servidor.
 
 O painel de banca abre um formulário para emoji e nome, cria um canal privado para o membro e libera acesso aos cargos **Minion • Corretor**, **Minion • Decorador** e **Passtime • Gestão**. As bancas podem ser arquivadas, desarquivadas ou apagadas pela gestão.
 

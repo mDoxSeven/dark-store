@@ -9,7 +9,7 @@ import type { PasstimeBank, PasstimeConfig } from '@prisma/client';
 import { prisma } from '../lib/db.js';
 import {
   PASSTIME_ART_FALLBACKS, PASSTIME_COMMANDS, PASSTIME_GUILD_ID, PASSTIME_IDS, PASSTIME_OWNER_ID,
-  isPasstimeCommand, normalizeDay, passtimeCommandName, safeChannelName, saoPauloClock, validTime,
+  isPasstimeCommand, isPasstimeManager, normalizeDay, passtimeCommandName, safeChannelName, saoPauloClock, validTime,
 } from './config.js';
 import {
   announcementMessage, bankRequestMessage, bankWelcomeMessage, editorLauncherMessage,
@@ -78,7 +78,7 @@ async function discoverChannelArt(channel: TextChannel, configured: string | nul
 }
 
 const isController = (member: GuildMember | null | undefined) =>
-  member?.id === PASSTIME_OWNER_ID || Boolean(member?.permissions.has(PermissionFlagsBits.Administrator)) || Boolean(member?.permissions.has(PermissionFlagsBits.ManageGuild));
+  Boolean(member && isPasstimeManager(member.id)) || Boolean(member?.permissions.has(PermissionFlagsBits.Administrator)) || Boolean(member?.permissions.has(PermissionFlagsBits.ManageGuild));
 
 const requireController = (member: GuildMember | null | undefined) => {
   if (!isController(member)) throw new Error('Somente a gestão do servidor pode usar este comando.');
@@ -174,7 +174,7 @@ async function logPasstime(guild: Guild, content: string) {
 
 export async function setupPasstime(message: Message<true>) {
   if (message.guildId !== PASSTIME_GUILD_ID) throw new Error('Este comando funciona somente no servidor Passtime.');
-  if (message.author.id !== PASSTIME_OWNER_ID && message.guild.ownerId !== message.author.id) {
+  if (!isPasstimeManager(message.author.id) && message.guild.ownerId !== message.author.id) {
     throw new Error('Somente o responsável autorizado pode montar a estrutura Passtime.');
   }
   const guild = message.guild;
@@ -447,7 +447,7 @@ async function runPasstimeCommand(message: Message<true>) {
     return;
   }
   if (command === '!clear') {
-    if (!message.member?.permissions.has(PermissionFlagsBits.ManageMessages) && message.author.id !== PASSTIME_OWNER_ID) throw new Error('Você precisa de **Gerenciar mensagens**.');
+    if (!message.member?.permissions.has(PermissionFlagsBits.ManageMessages) && !isPasstimeManager(message.author.id)) throw new Error('Você precisa de **Gerenciar mensagens**.');
     const count = Number.parseInt(args[0] ?? '', 10);
     if (!Number.isInteger(count) || count < 1 || count > 100) throw new Error('Use `!clear 1` até `!clear 100`.');
     const channel = await currentText(message);
