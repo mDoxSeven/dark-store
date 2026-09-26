@@ -304,6 +304,11 @@ model PasstimeScheduleEntry {
   day       String
   time      String
   label     String
+  userId    String?
+  activityKey String?
+  reminderMinutes Int      @default(120)
+  lastReminderKey String?
+  lastStartKey String?
   position  Int            @default(0)
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt

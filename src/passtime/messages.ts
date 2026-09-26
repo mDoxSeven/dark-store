@@ -169,14 +169,104 @@ export function scheduleMessage(entries: PasstimeScheduleEntry[]) {
   const sections = PASSTIME_DAYS.map(day => {
     const items = grouped.get(day)!.sort((a, b) => a.time.localeCompare(b.time) || a.position - b.position);
     if (!items.length) return `**${day[0].toUpperCase()}${day.slice(1)}:** *sem horários cadastrados*`;
-    return `**${day[0].toUpperCase()}${day.slice(1)}:**\n${items.map(item => `• \`${item.time}\` — ${item.label}`).join('\n')}`;
+    const visible = items.slice(0, 25);
+    const remaining = items.length - visible.length;
+    return [
+      `**${day[0].toUpperCase()}${day.slice(1)}:**`,
+      ...visible.map(item => `• \`${item.time}\` — ${item.label}${item.userId ? ` · <@${item.userId}>` : ''}`),
+      ...(remaining ? [`-# e mais ${remaining} horário(s)`] : []),
+    ].join('\n');
   });
-  return passtimeV2([
-    '# 🗓️ | Cronograma',
-    '*Horários e atividades da equipe.*',
-    '',
-    ...sections,
-  ].join('\n\n'), { banner: false, footer: 'Passtime • Alta • Horário de Brasília' });
+  const menu = { type: 1, components: [{
+      type: 3,
+      custom_id: PASSTIME_IDS.scheduleAction,
+      placeholder: 'Selecione uma opção do cronograma',
+      min_values: 1,
+      max_values: 1,
+      options: [
+        { label: 'Agendar atividade', description: 'Escolher dia, atividade e horário', value: 'book', emoji: { name: '🗓️' } },
+        { label: 'Meus horários', description: 'Consultar minhas reservas', value: 'mine', emoji: { name: '🔎' } },
+        { label: 'Cancelar horário', description: 'Remover uma reserva minha', value: 'cancel', emoji: { name: '🗑️' } },
+        { label: 'Atualizar cronograma', description: 'Sincronizar o painel agora', value: 'refresh', emoji: { name: '🔄' } },
+      ],
+    }] };
+  return {
+    flags: 32768,
+    allowedMentions: { parse: [], roles: [], users: [] },
+    components: [{
+      type: 17,
+      accent_color: PASSTIME_ACCENT,
+      components: [
+        text('# 🗓️ | Cronograma\n*Horários e atividades da equipe.*\n\nEscolha uma opção abaixo para reservar, consultar ou cancelar seus horários.'),
+        separator,
+        ...sections.map(section => text(section)),
+        separator,
+        menu,
+        separator,
+        text('-# Passtime • Alta • Horário de Brasília • Atualização automática'),
+      ],
+    }],
+  } as unknown as MessageCreateOptions;
+}
+
+export function scheduleDayPicker() {
+  return passtimeV2('## 🗓️ Escolha o dia\nSelecione o dia em que deseja assumir uma atividade.', {
+    banner: false,
+    footer: 'Passtime • Alta • Etapa 1 de 3',
+    components: [{ type: 1, components: [{
+      type: 3,
+      custom_id: PASSTIME_IDS.scheduleDay,
+      placeholder: 'Escolha o dia da semana',
+      min_values: 1,
+      max_values: 1,
+      options: PASSTIME_DAYS.map((day, index) => ({
+        label: `${day[0].toUpperCase()}${day.slice(1)}`,
+        value: String(index),
+        emoji: { name: '📅' },
+      })),
+    }] }],
+  });
+}
+
+export function scheduleActivityPicker(dayIndex: number, activities: ReadonlyArray<{ value: string; label: string; description: string; emoji: string }>) {
+  const day = PASSTIME_DAYS[dayIndex];
+  return passtimeV2(`## 📝 Escolha a atividade\nDia selecionado: **${day?.[0].toUpperCase()}${day?.slice(1)}**.`, {
+    banner: false,
+    footer: 'Passtime • Alta • Etapa 2 de 3',
+    components: [{ type: 1, components: [{
+      type: 3,
+      custom_id: `${PASSTIME_IDS.scheduleActivity}:${dayIndex}`,
+      placeholder: 'Escolha a atividade',
+      min_values: 1,
+      max_values: 1,
+      options: activities.map(activity => ({
+        label: activity.label,
+        description: activity.description,
+        value: activity.value,
+        emoji: { name: activity.emoji },
+      })),
+    }] }],
+  });
+}
+
+export function scheduleCancelPicker(entries: PasstimeScheduleEntry[]) {
+  return passtimeV2('## 🗑️ Cancelar horário\nEscolha uma das suas reservas para removê-la.', {
+    banner: false,
+    footer: 'O cronograma será atualizado automaticamente',
+    components: [{ type: 1, components: [{
+      type: 3,
+      custom_id: PASSTIME_IDS.scheduleCancel,
+      placeholder: 'Selecione o horário que deseja cancelar',
+      min_values: 1,
+      max_values: 1,
+      options: entries.slice(0, 25).map(entry => ({
+        label: `${entry.day} ${entry.time}`.slice(0, 100),
+        description: entry.label.slice(0, 100),
+        value: entry.id,
+        emoji: { name: '🗑️' },
+      })),
+    }] }],
+  });
 }
 
 export function announcementMessage(content: string, title = 'Anúncio') {

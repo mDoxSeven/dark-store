@@ -30,7 +30,7 @@ import { handleVortexSupportButton, handleVortexSupportCommand, handleVortexSupp
 import { VORTEX_SUPPORT_SELECT_ID } from '../vortex/supportMessages.js';
 import { ALTA_GUILD_ID, altaRiseCommand, executeAltaRiseCommand, handleAltaRiseCommand } from '../alta/rise.js';
 import {
-  handlePasstimeButton, handlePasstimeCommand, handlePasstimeModal, startPasstimeReminders,
+  handlePasstimeButton, handlePasstimeCommand, handlePasstimeModal, handlePasstimeSelect, startPasstimeReminders,
 } from '../passtime/module.js';
 import { PASSTIME_GUILD_ID } from '../passtime/config.js';
 const errorText = (error: unknown) => error instanceof Error ? error.message.slice(0, 1500) : 'Ação não concluída.';
@@ -344,6 +344,7 @@ export async function startDiscord(token: string) {
     void (async () => {
       if (interaction.isButton() && interaction.customId.startsWith('passtime:')) await handlePasstimeButton(interaction);
       else if (interaction.isModalSubmit() && interaction.customId.startsWith('passtime:')) await handlePasstimeModal(interaction);
+      else if (interaction.isStringSelectMenu() && interaction.customId.startsWith('passtime:schedule:')) await handlePasstimeSelect(interaction);
       else if (interaction.isStringSelectMenu() && interaction.customId === VORTEX_SUPPORT_SELECT_ID) await handleVortexSupportSelect(interaction);
       else if (interaction.isButton() && interaction.customId.startsWith('vortex:support:')) await handleVortexSupportButton(interaction);
       else if (interaction.isChatInputCommand() && interaction.commandName === 'avisorise') await executeAltaRiseCommand(interaction);

@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
-  PASSTIME_GUILD_ID, PASSTIME_OWNER_ID, isPasstimeCommand, isPasstimeManager, normalizeDay, validTime,
+  PASSTIME_ACTIVITIES, PASSTIME_GUILD_ID, PASSTIME_OWNER_ID, isPasstimeCommand, isPasstimeManager, normalizeDay, validTime,
 } from '../src/passtime/config.ts';
 import { PASSTIME_IMPLEMENTED_COMMANDS } from '../src/passtime/module.ts';
-import { bankRequestMessage, identificationMessage, pointsMessage, teamMessage } from '../src/passtime/messages.ts';
+import { bankRequestMessage, identificationMessage, pointsMessage, scheduleMessage, teamMessage } from '../src/passtime/messages.ts';
 
 const requested = [
   '!apelido', '!embed', '!logs', '!verificacao', '!clear', '!membersrole', '!anuncio', '!banca',
@@ -34,6 +34,22 @@ test('cronograma aceita dias em português e horário de 24 horas', () => {
   assert.equal(validTime('24:00'), false);
 });
 
+test('cronograma oferece autoagendamento, consulta, cancelamento e atualização', () => {
+  assert.ok(PASSTIME_ACTIVITIES.some(activity => activity.value === 'alta-opina'));
+  assert.ok(PASSTIME_ACTIVITIES.some(activity => activity.value === 'cafe-com-fofoca'));
+  const payload = scheduleMessage([{
+    id: 'entry-1', guildId: PASSTIME_GUILD_ID, day: 'segunda', time: '09:00', label: 'Alta Opina',
+    userId: '1002774556269891694', activityKey: 'alta-opina', reminderMinutes: 120,
+    lastReminderKey: null, lastStartKey: null, position: 0, createdAt: new Date(), updatedAt: new Date(),
+  }]);
+  const raw = JSON.stringify(payload.components);
+  assert.match(raw, /passtime:schedule:action/);
+  assert.match(raw, /Agendar atividade/);
+  assert.match(raw, /Meus horários/);
+  assert.match(raw, /Cancelar horário/);
+  assert.match(raw, /1002774556269891694/);
+});
+
 test('painéis Passtime usam Components V2, botão cinza e artes configuráveis', () => {
   const presentation = {
     minionEmoji: '<:minion:123>',
@@ -59,9 +75,22 @@ test('integração do Angel encaminha comandos, botões, formulários e lembrete
   assert.match(source, /handlePasstimeCommand\(message\)/);
   assert.match(source, /handlePasstimeButton\(interaction\)/);
   assert.match(source, /handlePasstimeModal\(interaction\)/);
+  assert.match(source, /handlePasstimeSelect\(interaction\)/);
   assert.match(source, /startPasstimeReminders\(connected\)/);
   const schema = await readFile(new URL('../prisma/schema.prisma', import.meta.url), 'utf8');
   for (const model of ['PasstimeConfig', 'PasstimeBank', 'PasstimeScheduleEntry', 'PasstimeReminder']) {
     assert.match(schema, new RegExp(`model ${model}`));
   }
+  assert.match(schema, /lastReminderKey\s+String\?/);
+  assert.match(schema, /lastStartKey\s+String\?/);
+});
+
+test('agendamento atualiza o painel e dispara alertas automáticos', async () => {
+  const source = await readFile(new URL('../src/passtime/module.ts', import.meta.url), 'utf8');
+  assert.match(source, /await refreshSchedule\(interaction\.guild\)/);
+  assert.match(source, /dispatchPasstimeScheduleAlerts/);
+  assert.match(source, /entry\.reminderMinutes \* 60_000/);
+  assert.match(source, /lastReminderKey/);
+  assert.match(source, /lastStartKey/);
+  assert.match(source, /if \(running\) return/);
 });

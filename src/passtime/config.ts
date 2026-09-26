@@ -25,6 +25,11 @@ export const PASSTIME_IDS = {
   announcementModal: 'passtime:announcement:modal',
   scheduleOpen: 'passtime:schedule:open',
   scheduleModal: 'passtime:schedule:modal',
+  scheduleAction: 'passtime:schedule:action',
+  scheduleDay: 'passtime:schedule:day',
+  scheduleActivity: 'passtime:schedule:activity',
+  scheduleBookModal: 'passtime:schedule:book',
+  scheduleCancel: 'passtime:schedule:cancel',
 } as const;
 
 export const PASSTIME_COMMANDS = new Set([
@@ -34,6 +39,18 @@ export const PASSTIME_COMMANDS = new Set([
 ]);
 
 export const PASSTIME_DAYS = ['segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado', 'domingo'] as const;
+
+export const PASSTIME_ACTIVITIES = [
+  { value: 'alta-opina', label: 'Alta Opina', description: 'Matéria Alta Opina', emoji: '📰' },
+  { value: 'alta-lifestyle', label: 'Alta Lifestyle', description: 'Matéria Alta Lifestyle', emoji: '✨' },
+  { value: 'cafe-com-fofoca', label: 'Café com Fofoca', description: 'Matéria Café com Fofoca', emoji: '☕' },
+  { value: 'sugestao', label: 'Sugestão', description: 'Produção de sugestão', emoji: '💡' },
+  { value: 'indicacao-rec', label: 'Indicação de Rec', description: 'Indicação de recrutamento', emoji: '📣' },
+  { value: 'horario-vago', label: 'Horário vago', description: 'Reservar um horário vago', emoji: '🕐' },
+  { value: 'outra', label: 'Outra atividade', description: 'Informar uma atividade personalizada', emoji: '📝' },
+] as const;
+
+export const PASSTIME_SCHEDULE_REMINDER_MINUTES = 120;
 
 const dayAliases: Record<string, string> = {
   seg: 'segunda', segunda: 'segunda', 'segunda-feira': 'segunda',
@@ -60,12 +77,14 @@ export function safeChannelName(value: string) {
 export function saoPauloClock(date = new Date()) {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: PASSTIME_TIME_ZONE,
-    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
-    hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short', hour: '2-digit', minute: '2-digit',
+    hourCycle: 'h23',
   }).formatToParts(date);
   const read = (type: Intl.DateTimeFormatPartTypes) => parts.find(part => part.type === type)?.value ?? '';
+  const weekday = ({ Mon: 'segunda', Tue: 'terça', Wed: 'quarta', Thu: 'quinta', Fri: 'sexta', Sat: 'sábado', Sun: 'domingo' } as Record<string, string>)[read('weekday')] ?? '';
   return {
     date: `${read('year')}-${read('month')}-${read('day')}`,
     time: `${read('hour')}:${read('minute')}`,
+    day: weekday,
   };
 }

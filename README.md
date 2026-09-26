@@ -51,7 +51,7 @@ O painel de banca abre um formulário para emoji e nome, cria um canal privado p
 
 Para reconhecer outra pessoa como gestora, atribua a ela o cargo **Passtime • Gestão** criado pelo `!passtime`. O Angel confere o ID salvo desse cargo, portanto não é necessário cadastrar o ID individual da pessoa no código. Administradores, membros com **Gerenciar servidor** e os dois responsáveis fixos também continuam autorizados.
 
-Comandos administrativos: `!apelido`, `!embed`, `!logs`, `!verificacao`, `!clear`, `!membersrole`, `!anuncio`, `!banca`, `!banca_apagar`, `!banca_arquivar`, `!banca_desarquivar`, `!cronograma`, `!lembrete`, `!atualizar_cronograma`, `!limpar_cronograma`, `!editar_horarios` e `!equipe`. Os lembretes usam o horário de Brasília e os editores abrem formulários privados. O `Message Content Intent` e o `Server Members Intent` precisam estar habilitados.
+Comandos administrativos: `!apelido`, `!embed`, `!logs`, `!verificacao`, `!clear`, `!membersrole`, `!anuncio`, `!banca`, `!banca_apagar`, `!banca_arquivar`, `!banca_desarquivar`, `!cronograma`, `!lembrete`, `!atualizar_cronograma`, `!limpar_cronograma`, `!editar_horarios` e `!equipe`. O cronograma publicado possui um menu para membros verificados escolherem dia, atividade e horário, consultarem as próprias reservas e cancelarem horários. Cada alteração atualiza o mesmo painel automaticamente; o Angel envia um aviso duas horas antes e outro no horário, sempre pelo fuso de Brasília. Os editores administrativos continuam disponíveis. O `Message Content Intent` e o `Server Members Intent` precisam estar habilitados.
 
 ## Configurar a VPS
 
