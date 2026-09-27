@@ -33,6 +33,8 @@ import {
   handlePasstimeButton, handlePasstimeCommand, handlePasstimeModal, handlePasstimeSelect, startPasstimeReminders,
 } from '../passtime/module.js';
 import { PASSTIME_GUILD_ID } from '../passtime/config.js';
+import { handleLeadershipButton, handleLeadershipCommand, handleLeadershipModal } from '../leadership/module.js';
+import { LEADERSHIP_GUILD_ID } from '../leadership/config.js';
 const errorText = (error: unknown) => error instanceof Error ? error.message.slice(0, 1500) : 'Ação não concluída.';
 
 async function handleCriar(interaction: ChatInputCommandInteraction) {
@@ -345,6 +347,8 @@ export async function startDiscord(token: string) {
       if (interaction.isButton() && interaction.customId.startsWith('passtime:')) await handlePasstimeButton(interaction);
       else if (interaction.isModalSubmit() && interaction.customId.startsWith('passtime:')) await handlePasstimeModal(interaction);
       else if (interaction.isStringSelectMenu() && interaction.customId.startsWith('passtime:schedule:')) await handlePasstimeSelect(interaction);
+      else if (interaction.isButton() && interaction.customId.startsWith('leadership:')) await handleLeadershipButton(interaction);
+      else if (interaction.isModalSubmit() && interaction.customId.startsWith('leadership:')) await handleLeadershipModal(interaction);
       else if (interaction.isStringSelectMenu() && interaction.customId === VORTEX_SUPPORT_SELECT_ID) await handleVortexSupportSelect(interaction);
       else if (interaction.isButton() && interaction.customId.startsWith('vortex:support:')) await handleVortexSupportButton(interaction);
       else if (interaction.isChatInputCommand() && interaction.commandName === 'avisorise') await executeAltaRiseCommand(interaction);
@@ -372,6 +376,7 @@ export async function startDiscord(token: string) {
     if (message.author.bot || !message.inGuild()) return;
     void (async () => {
       if (await handlePasstimeCommand(message)) return;
+      if (await handleLeadershipCommand(message)) return;
       if (await handleAltaRiseCommand(message)) return;
       await handleVortexSupportCommand(message);
     })().catch(error => console.error(`comando por prefixo: ${errorText(error)}`));
@@ -430,6 +435,9 @@ export async function startDiscord(token: string) {
         } else {
           console.warn(`Angel sem acesso ao servidor Passtime ${PASSTIME_GUILD_ID}.`);
         }
+        const leadershipGuild = await connected.guilds.fetch(LEADERSHIP_GUILD_ID).catch(() => null);
+        if (leadershipGuild) console.log(`Módulo Liderança disponível no servidor ${LEADERSHIP_GUILD_ID}.`);
+        else console.warn(`Angel sem acesso ao servidor Liderança ${LEADERSHIP_GUILD_ID}.`);
         connected.user.setPresence({ status: 'online', activities: [{ name: 'a dark store', type: ActivityType.Watching }] });
         configureDiscordRuntime(discordRuntime(connected, guild));
         await sweepClosedTickets(connected);

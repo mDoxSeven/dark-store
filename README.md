@@ -53,6 +53,14 @@ Para reconhecer outra pessoa como gestora, atribua a ela o cargo **Passtime • 
 
 Comandos administrativos: `!apelido`, `!embed`, `!logs`, `!verificacao`, `!clear`, `!membersrole`, `!anuncio`, `!banca`, `!banca_apagar`, `!banca_arquivar`, `!banca_desarquivar`, `!cronograma`, `!lembrete`, `!atualizar_cronograma`, `!limpar_cronograma`, `!editar_horarios` e `!equipe`. O cronograma publicado possui um menu para membros verificados escolherem dia, atividade e horário, consultarem as próprias reservas e cancelarem horários. Cada alteração atualiza o mesmo painel automaticamente; o Angel envia um aviso duas horas antes e outro no horário, sempre pelo fuso de Brasília. Os editores administrativos continuam disponíveis. O `Message Content Intent` e o `Server Members Intent` precisam estar habilitados.
 
+## Liderança - Alta
+
+O módulo funciona somente no servidor `1542871650473746454`. Um administrador executa `!criarlideranca` para reconhecer os canais decorados que já existem, preservar suas artes e publicar os painéis Components V2. O comando pode ser repetido para corrigir permissões e atualizar os painéis sem duplicar a estrutura.
+
+O botão de verificação cria uma solicitação privada. Um integrante de um dos quatro cargos administrativos configurados aprova ou recusa; somente a aprovação adiciona o cargo `1542876488729108480` e libera o restante do servidor. RPP, justificativa, sugestão, pedido de função para o bot, avaliação, relatório, upamento e destaque também usam formulários com análise administrativa e aviso no privado.
+
+O cronograma começa com os horários informados e é atualizado com `!lideranca_cronograma dia HH:MM atividade`. Para remover, use `!lideranca_cronograma apagar dia HH:MM`. Cada área pode ganhar seu canal privado de relatório com `!lideranca_area @Cargo Nome da Área`.
+
 ## Configurar a VPS
 
 ```bash

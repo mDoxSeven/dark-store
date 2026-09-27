@@ -332,3 +332,90 @@ model PasstimeReminder {
 
   @@index([guildId, enabled, time])
 }
+
+model LeadershipConfig {
+  guildId                 String   @id
+  verifiedRoleId          String
+  adminRoleIdsJson        String
+  verificationChannelId   String?
+  explanationChannelId    String?
+  scheduleChannelId       String?
+  rppChannelId            String?
+  justificationChannelId  String?
+  suggestionsChannelId    String?
+  botChannelId            String?
+  evaluationChannelId     String?
+  reportsChannelId        String?
+  upsChannelId            String?
+  highlightsChannelId     String?
+  reviewChannelId         String?
+  verificationMessageId   String?
+  explanationMessageId    String?
+  scheduleMessageId       String?
+  rppMessageId            String?
+  justificationMessageId  String?
+  suggestionsMessageId    String?
+  botMessageId            String?
+  evaluationMessageId     String?
+  reportsMessageId        String?
+  upsMessageId            String?
+  highlightsMessageId     String?
+  verificationBannerUrl   String?
+  explanationBannerUrl    String?
+  rppBannerUrl            String?
+  justificationBannerUrl  String?
+  suggestionsBannerUrl    String?
+  stripBannerUrl          String?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+  requests                LeadershipRequest[]
+  areas                   LeadershipArea[]
+  scheduleEntries         LeadershipScheduleEntry[]
+}
+
+model LeadershipRequest {
+  id              String   @id @default(cuid())
+  guildId         String
+  userId          String
+  type            String
+  fieldsJson      String
+  status          String   @default("PENDING")
+  reviewChannelId String?
+  reviewMessageId String?
+  reviewerId      String?
+  createdAt       DateTime @default(now())
+  resolvedAt      DateTime?
+  config          LeadershipConfig @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  @@index([guildId, status, createdAt])
+  @@index([guildId, userId, type, status])
+}
+
+model LeadershipArea {
+  id              String   @id @default(cuid())
+  guildId         String
+  name            String
+  roleId          String
+  reportChannelId String?  @unique
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  config          LeadershipConfig @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  @@unique([guildId, roleId])
+  @@index([guildId, name])
+}
+
+model LeadershipScheduleEntry {
+  id        String   @id @default(cuid())
+  guildId   String
+  day       String
+  time      String
+  label     String
+  roleId    String?
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  config    LeadershipConfig @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  @@index([guildId, day, time])
+}
