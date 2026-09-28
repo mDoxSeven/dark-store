@@ -3,6 +3,7 @@ import {
   type Activity,
   type Message,
   type MessageCreateOptions,
+  type Presence,
 } from 'discord.js';
 import { ALTA_GUILD_ID } from './rise.js';
 
@@ -20,6 +21,9 @@ export interface AltaSpotifyTrack {
   startedAt: number | null;
   endsAt: number | null;
 }
+
+const spotifyPresenceCache = new Map<string, { activity: Activity; seenAt: number }>();
+const presenceKey = (guildId: string, userId: string) => `${guildId}:${userId}`;
 
 const clamp = (value: number, minimum: number, maximum: number) => Math.min(maximum, Math.max(minimum, value));
 
@@ -62,6 +66,27 @@ export function isSpotifyPresenceActivity(activity: Pick<Activity, 'name' | 'typ
   return name.includes('spotify')
     || largeImage.startsWith('spotify:')
     || activity.type === ActivityType.Listening && Boolean(activity.syncId && activity.details && activity.state);
+}
+
+export function rememberAltaSpotifyPresence(presence: Presence) {
+  if (presence.guild?.id !== ALTA_GUILD_ID) return false;
+  const activity = presence.activities.find(isSpotifyPresenceActivity);
+  if (!activity) return false;
+  spotifyPresenceCache.set(presenceKey(presence.guild.id, presence.userId), { activity, seenAt: Date.now() });
+  return true;
+}
+
+function recentSpotifyActivity(guildId: string, userId: string, now = Date.now()) {
+  const key = presenceKey(guildId, userId);
+  const cached = spotifyPresenceCache.get(key);
+  if (!cached) return null;
+  const trackEnd = cached.activity.timestamps?.end?.getTime();
+  const expiresAt = trackEnd ? trackEnd + 15_000 : cached.seenAt + 120_000;
+  if (now > expiresAt) {
+    spotifyPresenceCache.delete(key);
+    return null;
+  }
+  return cached.activity;
 }
 
 export function altaListeningMessage(userId: string, track: AltaSpotifyTrack, now = Date.now(), spotifyEmoji = ALTA_SPOTIFY_EMOJI): MessageCreateOptions {
@@ -121,9 +146,21 @@ export async function handleAltaListeningCommand(message: Message) {
     await message.reply({ content: 'A leitura do Spotify ainda não foi ativada no Angel.', allowedMentions: { repliedUser: false } });
     return true;
   }
-  const presence = message.guild.presences.cache.get(message.author.id) ?? message.member?.presence;
-  const activities = presence?.activities ?? [];
-  const activity = activities.find(isSpotifyPresenceActivity);
+  let presence = message.guild.presences.cache.get(message.author.id) ?? message.member?.presence;
+  let activities = presence?.activities ?? [];
+  let activity = activities.find(isSpotifyPresenceActivity);
+  if (activity && presence) rememberAltaSpotifyPresence(presence);
+  if (!activity) {
+    await message.guild.members.fetch({
+      user: [message.author.id],
+      withPresences: true,
+      time: 8_000,
+    }).catch(error => console.warn(`[alta!ouvindo] atualização forçada falhou para ${message.author.id}: ${error instanceof Error ? error.message : error}`));
+    presence = message.guild.presences.cache.get(message.author.id) ?? message.guild.members.cache.get(message.author.id)?.presence;
+    activities = presence?.activities ?? [];
+    activity = activities.find(isSpotifyPresenceActivity) ?? recentSpotifyActivity(message.guildId, message.author.id) ?? undefined;
+    if (activity && presence) rememberAltaSpotifyPresence(presence);
+  }
   const spotifyEmoji = message.client.emojis.cache.has(ALTA_SPOTIFY_EMOJI_ID) ? ALTA_SPOTIFY_EMOJI : '🟢';
   if (!activity) {
     const received = activities.length

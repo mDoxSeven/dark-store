@@ -49,8 +49,13 @@ test('V2 do Spotify mostra faixa, capa, progresso e botão externo', () => {
 });
 
 test('Angel encaminha o prefixo e habilita presença somente por configuração', async () => {
+  const listening = await readFile(new URL('../src/alta/listening.ts', import.meta.url), 'utf8');
+  assert.match(listening, /withPresences: true/);
+  assert.match(listening, /recentSpotifyActivity/);
   const bot = await readFile(new URL('../src/discord/bot.ts', import.meta.url), 'utf8');
   assert.match(bot, /handleAltaListeningCommand\(message\)/);
+  assert.match(bot, /Events\.PresenceUpdate/);
+  assert.match(bot, /rememberAltaSpotifyPresence\(newPresence\)/);
   assert.match(bot, /DARK_SPOTIFY_PRESENCE_ENABLED === 'true'/);
   assert.match(bot, /GatewayIntentBits\.GuildPresences/);
 });

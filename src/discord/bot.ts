@@ -29,7 +29,7 @@ import { adminCancellationPrompt, cancellationPrompt, cancelledTicketMessage, co
 import { handleVortexSupportButton, handleVortexSupportCommand, handleVortexSupportSelect, sweepVortexSupportTickets } from '../vortex/support.js';
 import { VORTEX_SUPPORT_SELECT_ID } from '../vortex/supportMessages.js';
 import { ALTA_GUILD_ID, altaRiseCommand, executeAltaRiseCommand, handleAltaRiseCommand } from '../alta/rise.js';
-import { handleAltaListeningCommand } from '../alta/listening.js';
+import { handleAltaListeningCommand, rememberAltaSpotifyPresence } from '../alta/listening.js';
 import {
   ALTA_RECRUITMENT_PREFIX, altaRecruitmentCommand, altaRecruitmentReportCommand, altaRecruitmentResetCommand,
   executeAltaRecruitmentCommand, executeAltaRecruitmentReport, executeAltaRecruitmentReset,
@@ -405,6 +405,9 @@ export async function startDiscord(token: string) {
       const result = raid.join(settings, joined.user.createdTimestamp);
       if (result.detected) await respondToRaid(prisma, settings, joined.id, 'JOIN_ALERT', result.reasons, responder(joined.guild));
     })().catch(error => console.error(`anti-raid entrada: ${errorText(error)}`));
+  });
+  client.on(Events.PresenceUpdate, (_oldPresence, newPresence) => {
+    rememberAltaSpotifyPresence(newPresence);
   });
   client.on(Events.GuildAuditLogEntryCreate, (entry, guild) => {
     void (async () => {
