@@ -1,5 +1,4 @@
 import type { MessageCreateOptions } from 'discord.js';
-import type { LeadershipScheduleEntry } from '@prisma/client';
 import { LEADERSHIP_ACCENT, LEADERSHIP_DAYS, LEADERSHIP_IDS } from './config.js';
 
 type ApiComponent = Record<string, unknown>;
@@ -86,8 +85,17 @@ export function explanationMessage(channels: LeadershipChannels, bannerUrl?: str
   ].join('\n'), { bannerUrl, footer: 'Liderança - Alta' });
 }
 
-export function scheduleMessage(entries: LeadershipScheduleEntry[]) {
-  const grouped = new Map(LEADERSHIP_DAYS.map(day => [day, [] as LeadershipScheduleEntry[]]));
+export type LeadershipScheduleItem = {
+  id: string;
+  day: string;
+  time: string;
+  label: string;
+  roleId: string | null;
+  position: number;
+};
+
+export function scheduleMessage(entries: LeadershipScheduleItem[]) {
+  const grouped = new Map(LEADERSHIP_DAYS.map(day => [day, [] as LeadershipScheduleItem[]]));
   for (const entry of entries) grouped.get(entry.day as typeof LEADERSHIP_DAYS[number])?.push(entry);
   const dayLabels: Record<typeof LEADERSHIP_DAYS[number], string> = {
     segunda: 'Segunda-Feira', terça: 'Terça-Feira', quarta: 'Quarta-Feira', quinta: 'Quinta-Feira',
@@ -97,14 +105,23 @@ export function scheduleMessage(entries: LeadershipScheduleEntry[]) {
     const items = grouped.get(day)!.sort((a, b) => a.time.localeCompare(b.time) || a.position - b.position);
     const title = `**${dayLabels[day]}**`;
     if (!items.length) return `${title}\n\`Nenhuma atividade marcada\``;
-    return `${title}\n${items.map(item => `\`${item.time}\` - **${item.roleId ? `<@&${item.roleId}>` : item.label}**`).join('\n')}`;
+    return `${title}\n${items.map(item => `\`${item.time}\` - **${item.roleId ? `<@&${item.roleId}>${item.label ? ` — ${item.label}` : ''}` : item.label}**`).join('\n')}`;
   });
   return leadershipV2([
     '# ⌛ | CRONOGRAMA',
     '*Aqui teremos o cronograma de atividades de todas as áreas.*',
     '',
     blocks.join('\n\n**⊹₊˚‧︵‿₊୨୧₊‿︵‧˚₊⊹**\n\n'),
-  ].join('\n'), { footer: 'Liderança - Alta', allowedRoles: entries.flatMap(entry => entry.roleId ? [entry.roleId] : []) });
+  ].join('\n'), {
+    footer: 'Liderança - Alta • Passtime sincronizado automaticamente',
+    // Exibe os cargos sem notificar toda a área a cada atualização do painel.
+    allowedRoles: [],
+    components: [{ type: 1, components: [
+      button(LEADERSHIP_IDS.scheduleAdd, 'Adicionar atividade', '➕'),
+      button(LEADERSHIP_IDS.scheduleRemove, 'Remover atividade', '➖'),
+      button(LEADERSHIP_IDS.scheduleRefresh, 'Sincronizar', '🔄'),
+    ] }],
+  });
 }
 
 type FormKind = 'rpp' | 'justification' | 'suggestion' | 'bot' | 'evaluation' | 'report' | 'up' | 'highlight';

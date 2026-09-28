@@ -18,6 +18,7 @@ import {
   scheduleDayPicker, scheduleMessage, teamMessage, verificationMessage,
   type PasstimePresentation,
 } from './messages.js';
+import { refreshLinkedLeadershipSchedule } from '../leadership/module.js';
 
 const ACTIVE_BANK = 'ACTIVE';
 const ARCHIVED_BANK = 'ARCHIVED';
@@ -278,6 +279,7 @@ export async function setupPasstime(message: Message<true>) {
     verificationMessageId, requestMessageId, identificationMessageId, pointsMessageId, teamMessageId, scheduleMessageId,
   } });
   await logPasstime(guild, `Estrutura sincronizada por <@${message.author.id}>. ${created.length ? `Criado: ${created.join(', ')}.` : 'Nenhum item duplicado.'}`);
+  await refreshLinkedLeadershipSchedule(guild.client).catch(error => console.error(`cronograma Liderança: ${commandError(error)}`));
   return { config, created };
 }
 
@@ -293,6 +295,7 @@ async function refreshSchedule(guild: Guild, config?: PasstimeConfig | null, fal
   const entries = await prisma.passtimeScheduleEntry.findMany({ where: { guildId: guild.id } });
   const id = await publishOrUpdate(channel, channel.id === config.scheduleChannelId ? config.scheduleMessageId : null, scheduleMessage(entries));
   await prisma.passtimeConfig.update({ where: { guildId: guild.id }, data: { scheduleChannelId: channel.id, scheduleMessageId: id } });
+  await refreshLinkedLeadershipSchedule(guild.client).catch(error => console.error(`cronograma Liderança: ${commandError(error)}`));
   return id;
 }
 

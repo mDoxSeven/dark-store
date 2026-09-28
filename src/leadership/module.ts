@@ -1,17 +1,18 @@
 import {
   ActionRowBuilder, ChannelType, MessageFlags, ModalBuilder, OverwriteType, PermissionFlagsBits,
   TextInputBuilder, TextInputStyle,
-  type ButtonInteraction, type CategoryChannel, type Guild, type GuildMember, type Message,
+  type ButtonInteraction, type CategoryChannel, type Client, type Guild, type GuildMember, type Message,
   type MessageCreateOptions, type MessageEditOptions, type ModalSubmitInteraction,
-  type OverwriteResolvable, type TextChannel,
+  type OverwriteResolvable, type Role, type TextChannel,
 } from 'discord.js';
 import type { LeadershipConfig } from '@prisma/client';
 import { prisma } from '../lib/db.js';
 import {
-  LEADERSHIP_ADMIN_ROLE_IDS, LEADERSHIP_DAYS, LEADERSHIP_GUILD_ID, LEADERSHIP_IDS,
+  LEADERSHIP_ADMIN_ROLE_IDS, LEADERSHIP_AREAS, LEADERSHIP_DAYS, LEADERSHIP_GUILD_ID, LEADERSHIP_IDS,
   LEADERSHIP_VERIFIED_ROLE_ID, isLeadershipCommand, leadershipCommandName,
   normalizeLeadershipDay, safeLeadershipName, validLeadershipTime,
 } from './config.js';
+import { PASSTIME_GUILD_ID } from '../passtime/config.js';
 import {
   closedReviewMessage, explanationMessage, formPanel, reviewMessage, scheduleMessage,
   verificationMessage,
@@ -19,10 +20,17 @@ import {
 
 type FormKind = 'rpp' | 'justification' | 'suggestion' | 'bot' | 'evaluation' | 'report' | 'up' | 'highlight';
 type ArtPair = { banner: string | null; strip: string | null };
+const scheduleButtonIds = new Set<string>([LEADERSHIP_IDS.scheduleAdd, LEADERSHIP_IDS.scheduleRemove, LEADERSHIP_IDS.scheduleRefresh]);
 
 const errorText = (error: unknown) => error instanceof Error ? error.message.slice(0, 1800) : 'Ação não concluída.';
 const semanticName = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   .toLocaleLowerCase('pt-BR').replace(/[^a-z0-9]/g, '');
+
+function leadershipArea(value: string) {
+  const roleId = value.match(/<@&(\d{15,22})>/)?.[1] ?? value.match(/^\d{15,22}$/)?.[0];
+  const semantic = semanticName(value);
+  return LEADERSHIP_AREAS.find(area => area.roleId === roleId || semantic === semanticName(area.key) || semantic === semanticName(area.name)) ?? null;
+}
 
 const formSpecs: Record<FormKind, { title: string; fields: Array<[string, string, TextInputStyle, number?]> }> = {
   rpp: { title: 'Solicitar RPP', fields: [['name', 'Nome', TextInputStyle.Short], ['duration', 'Tempo em dias (7 a 30)', TextInputStyle.Short], ['reason', 'Motivo', TextInputStyle.Paragraph]] },
@@ -169,6 +177,25 @@ async function requireConfig() {
   return config;
 }
 
+async function combinedScheduleEntries() {
+  const [leadership, passtime] = await Promise.all([
+    prisma.leadershipScheduleEntry.findMany({ where: { guildId: LEADERSHIP_GUILD_ID } }),
+    prisma.passtimeScheduleEntry.findMany({ where: { guildId: PASSTIME_GUILD_ID } }),
+  ]);
+  const passtimeArea = LEADERSHIP_AREAS.find(area => area.key === 'passtime')!;
+  return [
+    ...leadership,
+    ...passtime.map((entry, index) => ({
+      id: `passtime:${entry.id}`,
+      day: entry.day,
+      time: entry.time,
+      label: entry.label,
+      roleId: passtimeArea.roleId,
+      position: 10_000 + index,
+    })),
+  ];
+}
+
 function accessOverwrites(guild: Guild, botId: string): OverwriteResolvable[] {
   return [
     { id: guild.roles.everyone.id, type: OverwriteType.Role, deny: [PermissionFlagsBits.ViewChannel] },
@@ -203,6 +230,8 @@ async function setupLeadership(message: Message<true>) {
   if (verifiedRole.managed || !verifiedRole.editable) throw new Error('O cargo liberado após a verificação precisa ficar abaixo do cargo do Angel.');
   const missingAdmins = LEADERSHIP_ADMIN_ROLE_IDS.filter(id => !roles.has(id));
   if (missingAdmins.length) throw new Error(`Cargos administrativos não encontrados: ${missingAdmins.join(', ')}.`);
+  const missingAreas = LEADERSHIP_AREAS.filter(area => !roles.has(area.roleId));
+  if (missingAreas.length) throw new Error(`Cargos de área não encontrados: ${missingAreas.map(area => `${area.name} (${area.roleId})`).join(', ')}.`);
 
   let config = await prisma.leadershipConfig.upsert({
     where: { guildId: guild.id },
@@ -266,13 +295,21 @@ async function setupLeadership(message: Message<true>) {
     suggestionsBannerUrl: suggestionsArt.banner, stripBannerUrl,
   } });
 
+  const movChatRoleId = LEADERSHIP_AREAS.find(area => area.key === 'mov-chat')!.roleId;
   if (!await prisma.leadershipScheduleEntry.count({ where: { guildId: guild.id } })) {
     await prisma.leadershipScheduleEntry.createMany({ data: ['segunda', 'terça', 'quinta', 'sexta'].flatMap(day => [
-      { guildId: guild.id, day, time: '16:00', label: 'mov chat﹒౨ৎ˚₊‧' },
-      { guildId: guild.id, day, time: '22:00', label: 'mov chat﹒౨ৎ˚₊‧' },
+      { guildId: guild.id, day, time: '16:00', label: 'mov chat﹒౨ৎ˚₊‧', roleId: movChatRoleId },
+      { guildId: guild.id, day, time: '22:00', label: 'mov chat﹒౨ৎ˚₊‧', roleId: movChatRoleId },
     ]) });
   }
-  const entries = await prisma.leadershipScheduleEntry.findMany({ where: { guildId: guild.id } });
+  await prisma.leadershipScheduleEntry.updateMany({
+    where: { guildId: guild.id, roleId: null, label: 'mov chat﹒౨ৎ˚₊‧' },
+    data: { roleId: movChatRoleId },
+  });
+  for (const area of LEADERSHIP_AREAS) {
+    await ensureAreaChannel(guild, roles.get(area.roleId)!, area.name, reports, config, created);
+  }
+  const entries = await combinedScheduleEntries();
   const channels = { schedule: schedule.id, rpp: rpp.id, justification: justification.id, suggestions: suggestions.id, bot: bot.id, reports: reports.id, ups: ups.id, highlights: highlights.id, evaluation: evaluation.id };
   const ids = await Promise.all([
     publishOrUpdate(verification, config.verificationMessageId, verificationMessage(config.verificationBannerUrl)),
@@ -299,9 +336,42 @@ async function refreshSchedule(guild: Guild, config?: LeadershipConfig) {
   config ??= await requireConfig();
   const channel = await fetchText(guild, config.scheduleChannelId);
   if (!channel) throw new Error('Canal do cronograma indisponível.');
-  const entries = await prisma.leadershipScheduleEntry.findMany({ where: { guildId: guild.id } });
+  const entries = await combinedScheduleEntries();
   const scheduleMessageId = await publishOrUpdate(channel, config.scheduleMessageId, scheduleMessage(entries));
   await prisma.leadershipConfig.update({ where: { guildId: guild.id }, data: { scheduleMessageId } });
+}
+
+export async function refreshLinkedLeadershipSchedule(client: Client) {
+  const config = await prisma.leadershipConfig.findUnique({ where: { guildId: LEADERSHIP_GUILD_ID } });
+  if (!config) return false;
+  const guild = client.guilds.cache.get(LEADERSHIP_GUILD_ID) ?? await client.guilds.fetch(LEADERSHIP_GUILD_ID).catch(() => null);
+  if (!guild) return false;
+  await refreshSchedule(guild, config);
+  return true;
+}
+
+async function ensureAreaChannel(
+  guild: Guild,
+  role: Role,
+  name: string,
+  reports: TextChannel,
+  config: LeadershipConfig,
+  created: string[],
+) {
+  if (!reports.parent) throw new Error('Categoria principal de relatórios indisponível.');
+  const me = await guild.members.fetchMe();
+  const overwrites = reviewOverwrites(guild, me.id);
+  overwrites.push({ id: role.id, type: OverwriteType.Role, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.SendMessages] });
+  const prior = await prisma.leadershipArea.findUnique({ where: { guildId_roleId: { guildId: guild.id, roleId: role.id } } });
+  const before = created.length;
+  const channel = await ensureText(guild, prior?.reportChannelId, [`relatorio-${safeLeadershipName(name)}`], `relatório-${safeLeadershipName(name)}`, reports.parent, overwrites, `Relatórios privados da área ${name}.`, created);
+  await prisma.leadershipArea.upsert({
+    where: { guildId_roleId: { guildId: guild.id, roleId: role.id } },
+    create: { guildId: guild.id, roleId: role.id, name, reportChannelId: channel.id },
+    update: { name, reportChannelId: channel.id },
+  });
+  if (!prior?.reportChannelId || created.length > before) await channel.send(formPanel('report', null, config.stripBannerUrl));
+  return channel;
 }
 
 async function addArea(message: Message<true>, args: string[]) {
@@ -314,14 +384,8 @@ async function addArea(message: Message<true>, args: string[]) {
   const roleArg = args.findIndex(value => value.includes(roleId));
   const name = args.slice(roleArg + 1).join(' ').trim() || role.name;
   const reports = await fetchText(message.guild, config.reportsChannelId);
-  if (!reports?.parent) throw new Error('Canal principal de relatórios indisponível.');
-  const me = await message.guild.members.fetchMe();
-  const overwrites = reviewOverwrites(message.guild, me.id);
-  overwrites.push({ id: role.id, type: OverwriteType.Role, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.SendMessages] });
-  const prior = await prisma.leadershipArea.findUnique({ where: { guildId_roleId: { guildId: message.guild.id, roleId } } });
-  const channel = await ensureText(message.guild, prior?.reportChannelId, [`relatorio-${safeLeadershipName(name)}`], `relatório-${safeLeadershipName(name)}`, reports.parent, overwrites, `Relatórios privados da área ${name}.`, []);
-  await prisma.leadershipArea.upsert({ where: { guildId_roleId: { guildId: message.guild.id, roleId } }, create: { guildId: message.guild.id, roleId, name, reportChannelId: channel.id }, update: { name, reportChannelId: channel.id } });
-  if (!prior?.reportChannelId) await channel.send(formPanel('report', null, config.stripBannerUrl));
+  if (!reports) throw new Error('Canal principal de relatórios indisponível.');
+  const channel = await ensureAreaChannel(message.guild, role, name, reports, config, []);
   await message.reply({ content: `Área **${name}** vinculada ao cargo <@&${role.id}> em <#${channel.id}>.`, allowedMentions: { parse: [] } });
 }
 
@@ -337,15 +401,22 @@ async function editSchedule(message: Message<true>, args: string[]) {
   const offset = removing ? 1 : 0;
   const day = normalizeLeadershipDay(args[offset] ?? '');
   const time = args[offset + 1] ?? '';
-  if (!day || !validLeadershipTime(time)) throw new Error('Use `!lideranca_cronograma dia HH:MM atividade` ou `!lideranca_cronograma apagar dia HH:MM`.');
+  if (!day || !validLeadershipTime(time)) throw new Error('Use `!lideranca_cronograma dia HH:MM @Cargo atividade` ou `!lideranca_cronograma apagar dia HH:MM @Cargo`.');
   if (removing) {
-    const removed = await prisma.leadershipScheduleEntry.deleteMany({ where: { guildId: message.guild.id, day, time } });
-    if (!removed.count) throw new Error('Nenhuma atividade encontrada nesse dia e horário.');
+    const roleId = args.slice(offset + 2).join(' ').match(/<@&(\d{15,22})>/)?.[1];
+    if (!roleId) throw new Error('Mencione o cargo da área que terá o horário removido.');
+    const removed = await prisma.leadershipScheduleEntry.deleteMany({ where: { guildId: message.guild.id, day, time, roleId } });
+    const area = LEADERSHIP_AREAS.find(item => item.roleId === roleId);
+    if (!removed.count && area?.key === 'passtime') throw new Error('Esse horário deve ser removido no servidor Passtime; a Liderança será atualizada automaticamente.');
+    if (!removed.count) throw new Error('Nenhuma atividade dessa área foi encontrada nesse dia e horário.');
   } else {
     const rest = args.slice(offset + 2).join(' ').trim();
     const roleId = rest.match(/<@&(\d{15,22})>/)?.[1] ?? null;
     const label = rest.replace(/<@&\d{15,22}>/, '').trim() || (roleId ? 'Atividade da área' : '');
     if (!label && !roleId) throw new Error('Informe a atividade ou mencione o cargo da área.');
+    if (roleId && await prisma.leadershipScheduleEntry.findFirst({ where: { guildId: message.guild.id, day, time, roleId } })) {
+      throw new Error('Essa área já possui uma atividade nesse dia e horário.');
+    }
     await prisma.leadershipScheduleEntry.create({ data: { guildId: message.guild.id, day, time, label: label || 'Atividade da área', roleId } });
   }
   await refreshSchedule(message.guild);
@@ -387,6 +458,28 @@ async function createRequest(guild: Guild, userId: string, type: string, fields:
 
 export async function handleLeadershipButton(interaction: ButtonInteraction) {
   if (!interaction.customId.startsWith('leadership:') || !interaction.inCachedGuild() || interaction.guildId !== LEADERSHIP_GUILD_ID) return false;
+  if (scheduleButtonIds.has(interaction.customId)) {
+    const member = await interaction.guild.members.fetch(interaction.user.id);
+    requireAdmin(member, interaction.guild);
+    if (interaction.customId === LEADERSHIP_IDS.scheduleRefresh) {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      await refreshSchedule(interaction.guild);
+      await interaction.editReply('Cronograma sincronizado com o Passtime e com as atividades da Liderança.');
+      return true;
+    }
+    const action = interaction.customId === LEADERSHIP_IDS.scheduleAdd ? 'add' : 'remove';
+    const modal = new ModalBuilder()
+      .setCustomId(`${LEADERSHIP_IDS.scheduleModal}:${action}:${interaction.user.id}`)
+      .setTitle(action === 'add' ? 'Adicionar atividade' : 'Remover atividade')
+      .addComponents(
+        textField('day', 'Dia da semana', TextInputStyle.Short, 20),
+        textField('time', 'Horário em Brasília (HH:MM)', TextInputStyle.Short, 5),
+        textField('area', 'Área (ex.: Passtime ou Mov Chat)', TextInputStyle.Short, 40),
+      );
+    if (action === 'add') modal.addComponents(textField('activity', 'Nome da atividade', TextInputStyle.Short, 100));
+    await interaction.showModal(modal);
+    return true;
+  }
   if (interaction.customId === LEADERSHIP_IDS.verify) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const member = await interaction.guild.members.fetch(interaction.user.id);
@@ -449,7 +542,37 @@ export async function handleLeadershipButton(interaction: ButtonInteraction) {
 }
 
 export async function handleLeadershipModal(interaction: ModalSubmitInteraction) {
-  if (!interaction.customId.startsWith(`${LEADERSHIP_IDS.modal}:`) || !interaction.inCachedGuild() || interaction.guildId !== LEADERSHIP_GUILD_ID) return false;
+  if (!interaction.customId.startsWith('leadership:') || !interaction.inCachedGuild() || interaction.guildId !== LEADERSHIP_GUILD_ID) return false;
+  if (interaction.customId.startsWith(`${LEADERSHIP_IDS.scheduleModal}:`)) {
+    const [, , , action, ownerId] = interaction.customId.split(':');
+    if (ownerId !== interaction.user.id || !['add', 'remove'].includes(action)) throw new Error('Este editor de cronograma é inválido.');
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const member = await interaction.guild.members.fetch(interaction.user.id);
+    requireAdmin(member, interaction.guild);
+    const day = normalizeLeadershipDay(interaction.fields.getTextInputValue('day'));
+    const time = interaction.fields.getTextInputValue('time').trim();
+    const area = leadershipArea(interaction.fields.getTextInputValue('area').trim());
+    if (!day || !validLeadershipTime(time) || !area) {
+      throw new Error('Dia, horário ou área inválidos. Áreas: Mov Chat, Passtime, Design, Recrutamento e Eventos.');
+    }
+    if (action === 'add') {
+      const label = interaction.fields.getTextInputValue('activity').trim();
+      if (!label) throw new Error('Informe o nome da atividade.');
+      const duplicate = await prisma.leadershipScheduleEntry.findFirst({ where: { guildId: interaction.guild.id, day, time, roleId: area.roleId } });
+      if (duplicate) throw new Error(`${area.name} já possui uma atividade em ${day}, às ${time}.`);
+      await prisma.leadershipScheduleEntry.create({ data: { guildId: interaction.guild.id, day, time, label, roleId: area.roleId } });
+      await refreshSchedule(interaction.guild);
+      await interaction.editReply(`Atividade de **${area.name}** adicionada em **${day}, ${time}**. O cronograma foi atualizado.`);
+      return true;
+    }
+    const removed = await prisma.leadershipScheduleEntry.deleteMany({ where: { guildId: interaction.guild.id, day, time, roleId: area.roleId } });
+    if (!removed.count && area.key === 'passtime') throw new Error('Esse horário veio do Passtime. Remova-o pelo cronograma do servidor Passtime para sincronizar os dois painéis.');
+    if (!removed.count) throw new Error('Nenhuma atividade dessa área foi encontrada nesse dia e horário.');
+    await refreshSchedule(interaction.guild);
+    await interaction.editReply(`Atividade de **${area.name}** removida. O cronograma foi atualizado.`);
+    return true;
+  }
+  if (!interaction.customId.startsWith(`${LEADERSHIP_IDS.modal}:`)) return false;
   const [, , kindValue, ownerId] = interaction.customId.split(':');
   const kind = kindValue as FormKind;
   const spec = formSpecs[kind];

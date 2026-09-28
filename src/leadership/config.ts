@@ -7,6 +7,14 @@ export const LEADERSHIP_ADMIN_ROLE_IDS = [
   '1542873759885820037',
 ] as const;
 
+export const LEADERSHIP_AREAS = [
+  { key: 'mov-chat', name: 'Mov Chat', roleId: '1542876179353051228' },
+  { key: 'passtime', name: 'Passtime', roleId: '1542876176773681314' },
+  { key: 'design', name: 'Design', roleId: '1542876173875286086' },
+  { key: 'recrutamento', name: 'Recrutamento', roleId: '1542873767926173878' },
+  { key: 'eventos', name: 'Eventos', roleId: '1542873765069856868' },
+] as const;
+
 export const LEADERSHIP_ACCENT = 0xffef94;
 
 export const LEADERSHIP_IDS = {
@@ -14,6 +22,10 @@ export const LEADERSHIP_IDS = {
   open: 'leadership:open',
   modal: 'leadership:modal',
   review: 'leadership:review',
+  scheduleAdd: 'leadership:schedule:add',
+  scheduleRemove: 'leadership:schedule:remove',
+  scheduleRefresh: 'leadership:schedule:refresh',
+  scheduleModal: 'leadership:schedule:modal',
 } as const;
 
 export const LEADERSHIP_COMMANDS = new Set([

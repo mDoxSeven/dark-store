@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
-  LEADERSHIP_ADMIN_ROLE_IDS, LEADERSHIP_GUILD_ID, LEADERSHIP_VERIFIED_ROLE_ID,
+  LEADERSHIP_ADMIN_ROLE_IDS, LEADERSHIP_AREAS, LEADERSHIP_GUILD_ID, LEADERSHIP_VERIFIED_ROLE_ID,
   isLeadershipCommand, normalizeLeadershipDay, validLeadershipTime,
 } from '../src/leadership/config.ts';
 import { explanationMessage, formPanel, scheduleMessage, verificationMessage } from '../src/leadership/messages.ts';
@@ -12,6 +12,13 @@ test('módulo Liderança usa o servidor, cargo liberado e cargos administrativos
   assert.equal(LEADERSHIP_VERIFIED_ROLE_ID, '1542876488729108480');
   assert.deepEqual([...LEADERSHIP_ADMIN_ROLE_IDS], [
     '1542873754823032883', '1542876909405216889', '1542873757792731176', '1542873759885820037',
+  ]);
+  assert.deepEqual(LEADERSHIP_AREAS.map(area => [area.key, area.roleId]), [
+    ['mov-chat', '1542876179353051228'],
+    ['passtime', '1542876176773681314'],
+    ['design', '1542876173875286086'],
+    ['recrutamento', '1542873767926173878'],
+    ['eventos', '1542873765069856868'],
   ]);
   assert.equal(isLeadershipCommand('!criarlideranca'), true);
   assert.equal(isLeadershipCommand('!lideranca_area @Cargo Pass'), true);
@@ -30,6 +37,9 @@ test('cronograma valida os dias e horários em português', () => {
   const raw = JSON.stringify(payload.components);
   assert.match(raw, /Sábado/);
   assert.doesNotMatch(raw, /Sábado-Feira/);
+  assert.match(raw, /leadership:schedule:add/);
+  assert.match(raw, /leadership:schedule:remove/);
+  assert.match(raw, /leadership:schedule:refresh/);
 });
 
 test('painéis Liderança usam Components V2, artes e botões de fluxo', () => {
@@ -56,6 +66,11 @@ test('Angel encaminha comandos, botões e formulários da Liderança', async () 
   assert.match(module, /publishOrUpdate/);
   assert.match(module, /target\.roles\.add\(config\.verifiedRoleId/);
   assert.match(module, /duration < 7 \|\| duration > 30/);
+  assert.match(module, /combinedScheduleEntries/);
+  assert.match(module, /prisma\.passtimeScheduleEntry\.findMany/);
+  assert.match(module, /ensureAreaChannel/);
+  const passtime = await readFile(new URL('../src/passtime/module.ts', import.meta.url), 'utf8');
+  assert.match(passtime, /refreshLinkedLeadershipSchedule\(guild\.client\)/);
 });
 
 test('banco mantém configuração, solicitações, áreas e cronograma da Liderança', async () => {

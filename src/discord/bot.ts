@@ -33,7 +33,7 @@ import {
   handlePasstimeButton, handlePasstimeCommand, handlePasstimeModal, handlePasstimeSelect, startPasstimeReminders,
 } from '../passtime/module.js';
 import { PASSTIME_GUILD_ID } from '../passtime/config.js';
-import { handleLeadershipButton, handleLeadershipCommand, handleLeadershipModal } from '../leadership/module.js';
+import { handleLeadershipButton, handleLeadershipCommand, handleLeadershipModal, refreshLinkedLeadershipSchedule } from '../leadership/module.js';
 import { LEADERSHIP_GUILD_ID } from '../leadership/config.js';
 const errorText = (error: unknown) => error instanceof Error ? error.message.slice(0, 1500) : 'Ação não concluída.';
 
@@ -436,7 +436,10 @@ export async function startDiscord(token: string) {
           console.warn(`Angel sem acesso ao servidor Passtime ${PASSTIME_GUILD_ID}.`);
         }
         const leadershipGuild = await connected.guilds.fetch(LEADERSHIP_GUILD_ID).catch(() => null);
-        if (leadershipGuild) console.log(`Módulo Liderança disponível no servidor ${LEADERSHIP_GUILD_ID}.`);
+        if (leadershipGuild) {
+          await refreshLinkedLeadershipSchedule(connected).catch(error => console.error(`Cronograma Liderança não sincronizado: ${errorText(error)}`));
+          console.log(`Módulo Liderança disponível no servidor ${LEADERSHIP_GUILD_ID}.`);
+        }
         else console.warn(`Angel sem acesso ao servidor Liderança ${LEADERSHIP_GUILD_ID}.`);
         connected.user.setPresence({ status: 'online', activities: [{ name: 'a dark store', type: ActivityType.Watching }] });
         configureDiscordRuntime(discordRuntime(connected, guild));

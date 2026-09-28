@@ -59,7 +59,9 @@ O módulo funciona somente no servidor `1542871650473746454`. Um administrador e
 
 O botão de verificação cria uma solicitação privada. Um integrante de um dos quatro cargos administrativos configurados aprova ou recusa; somente a aprovação adiciona o cargo `1542876488729108480` e libera o restante do servidor. RPP, justificativa, sugestão, pedido de função para o bot, avaliação, relatório, upamento e destaque também usam formulários com análise administrativa e aviso no privado.
 
-O cronograma começa com os horários informados e é atualizado com `!lideranca_cronograma dia HH:MM atividade`. Para remover, use `!lideranca_cronograma apagar dia HH:MM`. Cada área pode ganhar seu canal privado de relatório com `!lideranca_area @Cargo Nome da Área`.
+O cronograma começa com os horários informados e também possui botões administrativos para adicionar, remover e sincronizar atividades. Os horários do Passtime são espelhados automaticamente: qualquer reserva, cancelamento ou limpeza no servidor Passtime atualiza o painel da Liderança. Também é possível usar `!lideranca_cronograma dia HH:MM @Cargo atividade`; para remover, use `!lideranca_cronograma apagar dia HH:MM @Cargo`.
+
+Os cargos oficiais de **Mov Chat**, **Passtime**, **Design**, **Recrutamento** e **Eventos** são reconhecidos pelo ID. O `!criarlideranca` cria ou sincroniza um canal privado de relatório para cada área. Outras áreas podem ser adicionadas depois com `!lideranca_area @Cargo Nome da Área`.
 
 ## Configurar a VPS
 
