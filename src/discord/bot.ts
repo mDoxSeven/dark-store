@@ -29,6 +29,7 @@ import { adminCancellationPrompt, cancellationPrompt, cancelledTicketMessage, co
 import { handleVortexSupportButton, handleVortexSupportCommand, handleVortexSupportSelect, sweepVortexSupportTickets } from '../vortex/support.js';
 import { VORTEX_SUPPORT_SELECT_ID } from '../vortex/supportMessages.js';
 import { ALTA_GUILD_ID, altaRiseCommand, executeAltaRiseCommand, handleAltaRiseCommand } from '../alta/rise.js';
+import { handleAltaListeningCommand } from '../alta/listening.js';
 import {
   ALTA_RECRUITMENT_PREFIX, altaRecruitmentCommand, altaRecruitmentReportCommand, altaRecruitmentResetCommand,
   executeAltaRecruitmentCommand, executeAltaRecruitmentReport, executeAltaRecruitmentReset,
@@ -333,7 +334,9 @@ function responder(guild: Guild): AntiRaidResponder {
 }
 
 export async function startDiscord(token: string) {
-  const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildModeration, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
+  const intents = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildModeration, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent];
+  if (process.env.DARK_SPOTIFY_PRESENCE_ENABLED === 'true') intents.push(GatewayIntentBits.GuildPresences);
+  const client = new Client({ intents });
   const raid = new AntiRaidEngine();
   const notifyCooldowns = new Map<string, number>();
   const responseCooldowns = new Map<string, number>();
@@ -388,6 +391,7 @@ export async function startDiscord(token: string) {
       if (await handlePasstimeCommand(message)) return;
       if (await handleLeadershipCommand(message)) return;
       if (await handleAltaRiseCommand(message)) return;
+      if (await handleAltaListeningCommand(message)) return;
       await handleVortexSupportCommand(message);
     })().catch(error => console.error(`comando por prefixo: ${errorText(error)}`));
   });

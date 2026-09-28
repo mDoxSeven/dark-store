@@ -71,6 +71,12 @@ Somente os usuários `446428192220119041`, `1251718254729232516` e `100277455626
 
 Quando o módulo da Liderança já foi criado, somente fichas aprovadas são espelhadas automaticamente no relatório privado da área de Recrutamento. O cargo do Angel precisa ficar acima dos três cargos iniciais.
 
+## Spotify — Tocando agora
+
+No servidor oficial da Alta, cada membro pode usar `alta!ouvindo` para publicar uma V2 com a música exibida em sua presença do Spotify: capa, faixa, artistas, álbum, progresso e botão direto para ouvir. O recurso usa o emoji animado `<a:spotify:1552396972013396008>` da Pureza.
+
+Antes de ativar, habilite **Presence Intent** na página **Bot** da aplicação do Angel no Discord Developer Portal e defina `DARK_SPOTIFY_PRESENCE_ENABLED=true` no `.env`. A pessoa também precisa manter visível sua atividade atual nas configurações de privacidade do Discord.
+
 ## Configurar a VPS
 
 ```bash
