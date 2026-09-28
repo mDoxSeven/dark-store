@@ -1,8 +1,9 @@
 import {
   MessageFlags, PermissionFlagsBits, SlashCommandBuilder,
-  type ChatInputCommandInteraction, type Guild, type GuildMember, type MessageCreateOptions,
-  type Role, type StringSelectMenuInteraction,
+  type ButtonInteraction, type ChatInputCommandInteraction, type Client, type Guild, type GuildMember,
+  type MessageCreateOptions, type MessageEditOptions, type Role, type StringSelectMenuInteraction,
 } from 'discord.js';
+import type { AltaRecruitment } from '@prisma/client';
 import { prisma } from '../lib/db.js';
 import { LEADERSHIP_AREAS, LEADERSHIP_GUILD_ID } from '../leadership/config.js';
 import { ALTA_GUILD_ID } from './rise.js';
@@ -10,8 +11,14 @@ import { ALTA_GUILD_ID } from './rise.js';
 export const ALTA_RECRUITMENT_PREFIX = 'angel:rec:';
 export const ALTA_RECRUITMENT_CHANNEL_ID = '1514841820947939508';
 export const ALTA_RECRUITMENT_RECORDS_CHANNEL_ID = '1514841659194736650';
+export const ALTA_RECRUITMENT_ANNOUNCEMENT_CHANNEL_ID = '1516279462931595385';
 export const ALTA_RECRUITMENT_ROLE_ID = '1417338258815193219';
 export const ALTA_RECRUITMENT_ACCENT = 0x7a163d;
+export const ALTA_RECRUITMENT_VALIDATOR_IDS = [
+  '446428192220119041',
+  '1251718254729232516',
+  '1002774556269891694',
+] as const;
 
 export const ALTA_RECRUITMENT_RANKS = [
   { key: 'born', name: 'Born', emoji: '🌱' },
@@ -30,6 +37,7 @@ function recruitmentV2(content: string, options: {
   thumbnailUrl?: string;
   accentColor?: number;
   allowedUsers?: string[];
+  allowedRoles?: string[];
 } = {}): MessageCreateOptions {
   const children: ApiComponent[] = [];
   if (options.thumbnailUrl) {
@@ -43,7 +51,7 @@ function recruitmentV2(content: string, options: {
   children.push(separator, { type: 10, content: '-# Alta Cúpula • Recrutamento' });
   return {
     flags: 32768 | (options.ephemeral ? MessageFlags.Ephemeral : 0),
-    allowedMentions: { parse: [], users: options.allowedUsers ?? [], roles: [] },
+    allowedMentions: { parse: [], users: options.allowedUsers ?? [], roles: options.allowedRoles ?? [] },
     components: [{ type: 17, accent_color: options.accentColor ?? ALTA_RECRUITMENT_ACCENT, components: children }],
   } as unknown as MessageCreateOptions;
 }
@@ -56,10 +64,27 @@ function assertAlta(guildId: string | null, channelId: string) {
   if (channelId !== ALTA_RECRUITMENT_CHANNEL_ID) throw new Error(`Use o comando no canal <#${ALTA_RECRUITMENT_CHANNEL_ID}>.`);
 }
 
+function assertAltaRecruitmentRecord(guildId: string | null, channelId: string) {
+  if (guildId !== ALTA_GUILD_ID) throw new Error('Esta ficha pertence ao servidor oficial da Alta.');
+  if (channelId !== ALTA_RECRUITMENT_RECORDS_CHANNEL_ID) throw new Error('Use os botões somente na ficha original de recrutamento.');
+}
+
 function assertRecruiter(member: GuildMember) {
   if (!member.roles.cache.has(ALTA_RECRUITMENT_ROLE_ID)) {
     throw new Error(`Somente membros do cargo <@&${ALTA_RECRUITMENT_ROLE_ID}> podem usar o \`/rec\`.`);
   }
+}
+
+export const isAltaRecruitmentValidator = (userId: string) => ALTA_RECRUITMENT_VALIDATOR_IDS.includes(userId as typeof ALTA_RECRUITMENT_VALIDATOR_IDS[number]);
+
+function assertRecruitmentAccess(member: GuildMember) {
+  if (!member.roles.cache.has(ALTA_RECRUITMENT_ROLE_ID) && !isAltaRecruitmentValidator(member.id)) {
+    throw new Error('Você não possui acesso ao sistema de recrutamento.');
+  }
+}
+
+function assertValidator(userId: string) {
+  if (!isAltaRecruitmentValidator(userId)) throw new Error('Somente os validadores autorizados podem usar esta função.');
 }
 
 export async function altaRecruitmentRankRoles(guild: Guild) {
@@ -92,6 +117,26 @@ export const altaRecruitmentCommand = new SlashCommandBuilder()
   .addUserOption(option => option
     .setName('recrutado')
     .setDescription('Membro ou ID da pessoa recrutada')
+    .setRequired(true));
+
+export const altaRecruitmentReportCommand = new SlashCommandBuilder()
+  .setName('relatoriorec')
+  .setDescription('Mostra os recrutamentos válidos por recrutador.')
+  .setDMPermission(false)
+  .addUserOption(option => option
+    .setName('membro')
+    .setDescription('Recrutador específico; deixe vazio para ver o ranking geral'));
+
+export const altaRecruitmentResetCommand = new SlashCommandBuilder()
+  .setName('resetrec')
+  .setDescription('Reinicia as estatísticas de recrutamento preservando o histórico.')
+  .setDMPermission(false)
+  .addUserOption(option => option
+    .setName('membro')
+    .setDescription('Recrutador específico; deixe vazio para resetar todos'))
+  .addBooleanOption(option => option
+    .setName('confirmar')
+    .setDescription('Confirma o reset das estatísticas selecionadas')
     .setRequired(true));
 
 export async function executeAltaRecruitmentCommand(interaction: ChatInputCommandInteraction) {
@@ -134,6 +179,7 @@ async function validateStep(interaction: StringSelectMenuInteraction) {
 }
 
 export function buildAltaRecruitmentRecord(options: {
+  recruitmentId?: string;
   recruiterId: string;
   targetId: string;
   rankDisplay: string;
@@ -141,7 +187,18 @@ export function buildAltaRecruitmentRecord(options: {
   previousFamily: string | null;
   avatarUrl?: string;
   mirrored?: boolean;
+  status?: string;
+  reviewerId?: string | null;
 }) {
+  const status = options.status ?? 'PENDING';
+  const statusText = status === 'APPROVED' ? '✅ Validado' : status === 'REJECTED' ? '❌ Recusado' : status === 'RESET' ? '🔄 Resetado' : '⏳ Aguardando validação';
+  const rows = status === 'PENDING' && options.recruitmentId ? [{
+    type: 1,
+    components: [
+      { type: 2, style: 3, custom_id: `${ALTA_RECRUITMENT_PREFIX}review:approve:${options.recruitmentId}`, label: 'Validar recrutamento', emoji: { name: '✅' } },
+      { type: 2, style: 4, custom_id: `${ALTA_RECRUITMENT_PREFIX}review:reject:${options.recruitmentId}`, label: 'Recusar recrutamento', emoji: { name: '❌' } },
+    ],
+  }] as ApiComponent[] : [];
   return recruitmentV2([
     '# °♡° | FICHA DE RECRUTAMENTO',
     '> Um novo integrante foi registrado pela equipe de Recrutamento da Alta.',
@@ -152,11 +209,19 @@ export function buildAltaRecruitmentRecord(options: {
     `°♡° **cargo inicial:** ${options.rankDisplay}`,
     `°♡° **saiu de alguma família?** ${options.cameFromFamily ? 'Sim' : 'Não'}`,
     `°♡° **se sim, qual?** ${options.previousFamily ?? '—'}`,
+    `°♡° **status:** ${statusText}`,
+    ...(options.reviewerId ? [`°♡° **analisado por:** <@${options.reviewerId}>`] : []),
     ...(options.mirrored ? ['', '-# Registro espelhado automaticamente do servidor oficial da Alta.'] : []),
-  ].join('\n'), { thumbnailUrl: options.avatarUrl, allowedUsers: options.mirrored ? [] : [options.targetId] });
+  ].join('\n'), {
+    thumbnailUrl: options.avatarUrl,
+    allowedUsers: options.mirrored ? [] : [options.targetId],
+    rows,
+    accentColor: status === 'APPROVED' ? 0x57f287 : status === 'REJECTED' ? 0xed4245 : status === 'RESET' ? 0x89949f : ALTA_RECRUITMENT_ACCENT,
+  });
 }
 
-async function mirrorRecruitmentToLeadership(interaction: StringSelectMenuInteraction, options: {
+async function mirrorRecruitmentToLeadership(client: Client, options: {
+  recruiterId: string;
   target: GuildMember;
   rankName: string;
   cameFromFamily: boolean;
@@ -167,16 +232,17 @@ async function mirrorRecruitmentToLeadership(interaction: StringSelectMenuIntera
     where: { guildId_roleId: { guildId: LEADERSHIP_GUILD_ID, roleId: area.roleId } },
   });
   if (!configured?.reportChannelId) return false;
-  const channel = await interaction.client.channels.fetch(configured.reportChannelId).catch(() => null);
+  const channel = await client.channels.fetch(configured.reportChannelId).catch(() => null);
   if (!channel?.isSendable()) return false;
   await channel.send(buildAltaRecruitmentRecord({
-    recruiterId: interaction.user.id,
+    recruiterId: options.recruiterId,
     targetId: options.target.id,
     rankDisplay: options.rankName,
     cameFromFamily: options.cameFromFamily,
     previousFamily: options.previousFamily,
     avatarUrl: options.target.displayAvatarURL({ extension: 'png', size: 256 }),
     mirrored: true,
+    status: 'APPROVED',
   }));
   return true;
 }
@@ -193,37 +259,41 @@ async function finalizeRecruitment(
   if (!selected) throw new Error('O cargo selecionado não é um cargo inicial válido.');
   const records = await interaction.guild!.channels.fetch(ALTA_RECRUITMENT_RECORDS_CHANNEL_ID).catch(() => null);
   if (!records?.isSendable()) throw new Error('O canal de fichas de recrutamento não está disponível.');
-  const me = await interaction.guild!.members.fetchMe();
-  if (!me.permissions.has(PermissionFlagsBits.ManageRoles)) throw new Error('O Angel precisa da permissão **Gerenciar cargos**.');
-
   await interaction.deferUpdate();
-  const hadSelected = target.roles.cache.has(selected.role.id);
-  const oldRanks = ranks.filter(rank => rank.role.id !== selected.role.id && target.roles.cache.has(rank.role.id));
+  const existing = await prisma.altaRecruitment.findFirst({
+    where: { guildId: interaction.guildId!, targetId: target.id, active: true, status: { in: ['PENDING', 'APPROVED'] } },
+  });
+  if (existing) throw new Error(existing.status === 'PENDING'
+    ? 'Esse membro já possui uma ficha aguardando validação.'
+    : 'Esse membro já possui um recrutamento válido no ciclo atual.');
+  await prisma.altaRecruitmentConfig.upsert({
+    where: { guildId: interaction.guildId! },
+    create: { guildId: interaction.guildId!, announcementChannelId: ALTA_RECRUITMENT_ANNOUNCEMENT_CHANNEL_ID },
+    update: { announcementChannelId: ALTA_RECRUITMENT_ANNOUNCEMENT_CHANNEL_ID },
+  });
+  const recruitment = await prisma.altaRecruitment.create({ data: {
+    guildId: interaction.guildId!, recruiterId: interaction.user.id, targetId: target.id,
+    rankRoleId: selected.role.id, rankName: selected.name, cameFromFamily, previousFamily,
+    recordsChannelId: records.id,
+  } });
   try {
-    if (!hadSelected) await target.roles.add(selected.role, `Recrutado por ${interaction.user.tag}`);
-    if (oldRanks.length) await target.roles.remove(oldRanks.map(rank => rank.role), 'Atualização do cargo inicial pelo /rec');
-    await records.send(buildAltaRecruitmentRecord({
+    const sent = await records.send(buildAltaRecruitmentRecord({
+      recruitmentId: recruitment.id,
       recruiterId: interaction.user.id,
       targetId: target.id,
       rankDisplay: `<@&${selected.role.id}>`,
       cameFromFamily,
       previousFamily,
       avatarUrl: target.displayAvatarURL({ extension: 'png', size: 256 }),
+      status: 'PENDING',
     }));
+    await prisma.altaRecruitment.update({ where: { id: recruitment.id }, data: { recordsMessageId: sent.id } });
   } catch (error) {
-    if (!hadSelected) await target.roles.remove(selected.role, 'Reversão de ficha REC não publicada').catch(() => {});
-    if (oldRanks.length) await target.roles.add(oldRanks.map(rank => rank.role), 'Reversão de ficha REC não publicada').catch(() => {});
+    await prisma.altaRecruitment.delete({ where: { id: recruitment.id } }).catch(() => {});
     throw error;
   }
-
-  const mirrored = await mirrorRecruitmentToLeadership(interaction, {
-    target, rankName: selected.name, cameFromFamily, previousFamily,
-  }).catch(error => {
-    console.error(`espelho REC Liderança: ${error instanceof Error ? error.message : error}`);
-    return false;
-  });
   const done = recruitmentV2(
-    `# ✅ | RECRUTAMENTO CONCLUÍDO\nA ficha de <@${target.id}> foi publicada em <#${ALTA_RECRUITMENT_RECORDS_CHANNEL_ID}> e o cargo <@&${selected.role.id}> foi aplicado.${mirrored ? '\nO registro também foi espelhado no relatório de Recrutamento da Liderança.' : '\nO espelho da Liderança será ativado após executar `!criarlideranca` naquele servidor.'}`,
+    `# ⏳ | FICHA ENVIADA PARA VALIDAÇÃO\nA ficha de <@${target.id}> foi publicada em <#${ALTA_RECRUITMENT_RECORDS_CHANNEL_ID}>. O cargo <@&${selected.role.id}> será aplicado somente depois que um responsável validar o recrutamento.`,
   );
   await interaction.editReply({ components: done.components, allowedMentions: { parse: [] } });
 }
@@ -279,4 +349,184 @@ export async function handleAltaRecruitmentSelect(interaction: StringSelectMenuI
     } else if (interaction.replied) await interaction.followUp({ content: message, flags: MessageFlags.Ephemeral }).catch(() => {});
     else await interaction.reply({ content: message, flags: MessageFlags.Ephemeral }).catch(() => {});
   }
+}
+
+export async function handleAltaRecruitmentButton(interaction: ButtonInteraction) {
+  if (!interaction.customId.startsWith(`${ALTA_RECRUITMENT_PREFIX}review:`) || !interaction.inCachedGuild()) return false;
+  try {
+    assertAltaRecruitmentRecord(interaction.guildId, interaction.channelId);
+    assertValidator(interaction.user.id);
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const [, , , action, recruitmentId] = interaction.customId.split(':');
+    if (!['approve', 'reject'].includes(action) || !recruitmentId) throw new Error('Ação de validação inválida.');
+    const record = await prisma.altaRecruitment.findUnique({ where: { id: recruitmentId } });
+    if (!record || record.guildId !== interaction.guildId || record.recordsMessageId !== interaction.message.id) throw new Error('Ficha de recrutamento não encontrada.');
+    if (!record.active) throw new Error('Esta ficha pertence a um ciclo já resetado.');
+    if (record.status !== 'PENDING') throw new Error('Esta ficha já foi analisada.');
+    const status = action === 'approve' ? 'APPROVED' : 'REJECTED';
+    const claimed = await prisma.altaRecruitment.updateMany({
+      where: { id: record.id, status: 'PENDING', active: true },
+      data: { status, reviewedBy: interaction.user.id, reviewedAt: new Date() },
+    });
+    if (!claimed.count) throw new Error('Esta ficha já foi analisada.');
+
+    const target = await interaction.guild.members.fetch(record.targetId).catch(() => null);
+    try {
+      if (status === 'APPROVED') {
+        if (!target) throw new Error('O recrutado não está mais no servidor.');
+        const me = await interaction.guild.members.fetchMe();
+        if (!me.permissions.has(PermissionFlagsBits.ManageRoles)) throw new Error('O Angel precisa da permissão **Gerenciar cargos**.');
+        const ranks = await altaRecruitmentRankRoles(interaction.guild);
+        const selected = ranks.find(rank => rank.role.id === record.rankRoleId);
+        if (!selected) throw new Error('O cargo inicial salvo não está mais disponível.');
+        if (!target.roles.cache.has(selected.role.id)) await target.roles.add(selected.role, `Recrutamento validado por ${interaction.user.tag}`);
+        const oldRanks = ranks.filter(rank => rank.role.id !== selected.role.id && target.roles.cache.has(rank.role.id));
+        if (oldRanks.length) await target.roles.remove(oldRanks.map(rank => rank.role), 'Cargo inicial atualizado após validação REC');
+      }
+    } catch (error) {
+      await prisma.altaRecruitment.update({ where: { id: record.id }, data: { status: 'PENDING', reviewedBy: null, reviewedAt: null } });
+      throw error;
+    }
+
+    const closed = buildAltaRecruitmentRecord({
+      recruiterId: record.recruiterId,
+      targetId: record.targetId,
+      rankDisplay: `<@&${record.rankRoleId}>`,
+      cameFromFamily: record.cameFromFamily,
+      previousFamily: record.previousFamily,
+      avatarUrl: target?.displayAvatarURL({ extension: 'png', size: 256 }),
+      status,
+      reviewerId: interaction.user.id,
+    });
+    await interaction.message.edit(closed as MessageEditOptions).catch(error => console.error(`atualiza ficha REC: ${error instanceof Error ? error.message : error}`));
+
+    let mirrored = false;
+    if (status === 'APPROVED' && target) {
+      mirrored = await mirrorRecruitmentToLeadership(interaction.client, {
+        recruiterId: record.recruiterId,
+        target,
+        rankName: record.rankName,
+        cameFromFamily: record.cameFromFamily,
+        previousFamily: record.previousFamily,
+      }).catch(error => {
+        console.error(`espelho REC Liderança: ${error instanceof Error ? error.message : error}`);
+        return false;
+      });
+    }
+    const recruiter = await interaction.client.users.fetch(record.recruiterId).catch(() => null);
+    await recruiter?.send(`Sua ficha REC de <@${record.targetId}> foi **${status === 'APPROVED' ? 'validada' : 'recusada'}** por ${interaction.user.tag}.`).catch(() => {});
+    await interaction.editReply(status === 'APPROVED'
+      ? `Recrutamento validado, cargo aplicado e ficha encerrada.${mirrored ? ' Registro espelhado na Liderança.' : ''}`
+      : 'Recrutamento recusado. Nenhum cargo foi aplicado.');
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Não foi possível analisar esta ficha.';
+    if (interaction.deferred || interaction.replied) await interaction.editReply(message).catch(() => {});
+    else await interaction.reply({ content: message, flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+  return true;
+}
+
+export function buildAltaRecruitmentAnnouncement() {
+  return recruitmentV2([
+    `<@&${ALTA_RECRUITMENT_ROLE_ID}>`,
+    '# 💗 | NOVO SISTEMA DE RECRUTAMENTO',
+    '*A equipe de Recrutamento da Alta agora possui um fluxo completo pelo Angel.*',
+    '',
+    '### Como funciona',
+    `1. Use \`/rec\` no canal <#${ALTA_RECRUITMENT_CHANNEL_ID}> e escolha o membro recrutado.`,
+    '2. Selecione **Born**, **Featured** ou **Purple**.',
+    '3. Informe se ele veio de outra família e, quando necessário, escolha **Turquia**, **Nyx**, **Elite** ou **Dragons**.',
+    `4. A ficha será publicada em <#${ALTA_RECRUITMENT_RECORDS_CHANNEL_ID}> aguardando validação.`,
+    '5. O cargo só será aplicado depois que um responsável clicar em **Validar recrutamento**.',
+    '',
+    '### Novos comandos',
+    '• `/relatoriorec` — mostra os recrutamentos válidos de cada recrutador.',
+    '• `/resetrec` — inicia um novo ciclo de estatísticas sem apagar o histórico.',
+    '',
+    '> Recrutamentos recusados não somam no relatório. As fichas validadas também são espelhadas no servidor de Liderança.',
+  ].join('\n'), { allowedRoles: [ALTA_RECRUITMENT_ROLE_ID] });
+}
+
+export async function refreshAltaRecruitmentAnnouncement(client: Client) {
+  const guild = client.guilds.cache.get(ALTA_GUILD_ID) ?? await client.guilds.fetch(ALTA_GUILD_ID).catch(() => null);
+  if (!guild) return false;
+  const channel = await guild.channels.fetch(ALTA_RECRUITMENT_ANNOUNCEMENT_CHANNEL_ID).catch(() => null);
+  if (!channel?.isSendable()) return false;
+  let config = await prisma.altaRecruitmentConfig.upsert({
+    where: { guildId: ALTA_GUILD_ID },
+    create: { guildId: ALTA_GUILD_ID, announcementChannelId: channel.id },
+    update: { announcementChannelId: channel.id },
+  });
+  const existing = config.announcementMessageId ? await channel.messages.fetch(config.announcementMessageId).catch(() => null) : null;
+  const messageId = existing
+    ? (await existing.edit(buildAltaRecruitmentAnnouncement() as MessageEditOptions)).id
+    : (await channel.send(buildAltaRecruitmentAnnouncement())).id;
+  if (messageId !== config.announcementMessageId) {
+    config = await prisma.altaRecruitmentConfig.update({ where: { guildId: ALTA_GUILD_ID }, data: { announcementMessageId: messageId } });
+  }
+  return Boolean(config.announcementMessageId);
+}
+
+function reportLine(record: AltaRecruitment) {
+  const family = record.previousFamily ? ` • veio da ${record.previousFamily}` : '';
+  return `• <@${record.targetId}> — **${record.rankName}**${family} • <t:${Math.floor(record.createdAt.getTime() / 1000)}:d>`;
+}
+
+export async function executeAltaRecruitmentReport(interaction: ChatInputCommandInteraction) {
+  if (!interaction.inCachedGuild()) throw new Error('Use este comando dentro do servidor.');
+  assertAlta(interaction.guildId, interaction.channelId);
+  assertRecruitmentAccess(interaction.member);
+  const member = interaction.options.getUser('membro');
+  if (member) {
+    const records = await prisma.altaRecruitment.findMany({
+      where: { guildId: interaction.guildId, recruiterId: member.id, active: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    const approved = records.filter(item => item.status === 'APPROVED');
+    const pending = records.filter(item => item.status === 'PENDING').length;
+    const rejected = records.filter(item => item.status === 'REJECTED').length;
+    const content = [
+      `# 📊 | RELATÓRIO REC — ${member.displayName}`,
+      `**Recrutamentos válidos:** ${approved.length}`,
+      `**Aguardando validação:** ${pending}`,
+      `**Recusados:** ${rejected}`,
+      '',
+      '### Últimos recrutamentos válidos',
+      approved.length ? approved.slice(0, 15).map(reportLine).join('\n') : '*Nenhum recrutamento validado no ciclo atual.*',
+    ].join('\n');
+    await interaction.reply(recruitmentV2(content) as any);
+    return;
+  }
+  const approved = await prisma.altaRecruitment.findMany({
+    where: { guildId: interaction.guildId, status: 'APPROVED', active: true },
+    orderBy: { createdAt: 'desc' },
+  });
+  const counts = new Map<string, number>();
+  for (const item of approved) counts.set(item.recruiterId, (counts.get(item.recruiterId) ?? 0) + 1);
+  const ranking = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  const content = [
+    '# 🏆 | RELATÓRIO GERAL DE RECRUTAMENTO',
+    '*Somente fichas validadas entram nesta classificação.*',
+    '',
+    ranking.length ? ranking.map(([userId, count], index) => `**${index + 1}º** <@${userId}> — **${count}** recrutamento(s) válido(s)`).join('\n') : '*Ainda não existem recrutamentos válidos neste ciclo.*',
+    '',
+    `**Total válido da equipe:** ${approved.length}`,
+  ].join('\n');
+  await interaction.reply(recruitmentV2(content) as any);
+}
+
+export async function executeAltaRecruitmentReset(interaction: ChatInputCommandInteraction) {
+  if (!interaction.inCachedGuild()) throw new Error('Use este comando dentro do servidor.');
+  assertAlta(interaction.guildId, interaction.channelId);
+  assertValidator(interaction.user.id);
+  if (!interaction.options.getBoolean('confirmar', true)) throw new Error('Marque **confirmar: Sim** para realizar o reset.');
+  const member = interaction.options.getUser('membro');
+  const result = await prisma.altaRecruitment.updateMany({
+    where: { guildId: interaction.guildId, active: true, ...(member ? { recruiterId: member.id } : {}) },
+    data: { active: false },
+  });
+  await interaction.reply(recruitmentV2(
+    `# 🔄 | ESTATÍSTICAS REC RESETADAS\n${member ? `O ciclo de <@${member.id}> foi reiniciado.` : 'O ciclo de toda a equipe foi reiniciado.'}\n\n**Registros retirados do ciclo atual:** ${result.count}\n-# O histórico foi preservado e os cargos dos membros não foram removidos.`,
+    { ephemeral: true },
+  ) as any);
 }

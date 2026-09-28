@@ -65,9 +65,11 @@ Os cargos oficiais de **Mov Chat**, **Passtime**, **Design**, **Recrutamento** e
 
 ## Recrutamento da Alta
 
-O Angel registra `/rec` somente no servidor oficial da Alta. Membros com o cargo de Recrutamento `1417338258815193219` usam `/rec recrutado:@membro` no canal `1514841820947939508`, selecionam **Born**, **Featured** ou **Purple** e informam se o recrutado veio de **Turquia**, **Nyx**, **Elite** ou **Dragons**. O cargo inicial é aplicado e a ficha Components V2 com avatar é publicada em `1514841659194736650`.
+O Angel registra `/rec` somente no servidor oficial da Alta. Membros com o cargo de Recrutamento `1417338258815193219` usam `/rec recrutado:@membro` no canal `1514841820947939508`, selecionam **Born**, **Featured** ou **Purple** e informam se o recrutado veio de **Turquia**, **Nyx**, **Elite** ou **Dragons**. A ficha Components V2 com avatar é publicada em `1514841659194736650` aguardando validação; o cargo inicial só é aplicado depois da aprovação.
 
-Quando o módulo da Liderança já foi criado, a mesma ficha é espelhada automaticamente no relatório privado da área de Recrutamento. O cargo do Angel precisa ficar acima dos três cargos iniciais.
+Somente os usuários `446428192220119041`, `1251718254729232516` e `1002774556269891694` podem usar os botões **Validar recrutamento** e **Recusar recrutamento**, além do `/resetrec`. O `/relatoriorec` mostra apenas recrutamentos aprovados no ciclo atual e aceita o parâmetro opcional `membro`; `/resetrec confirmar:Sim` inicia um novo ciclo sem apagar o histórico nem remover cargos. O aviso V2 do módulo é criado ou atualizado automaticamente em `1516279462931595385`.
+
+Quando o módulo da Liderança já foi criado, somente fichas aprovadas são espelhadas automaticamente no relatório privado da área de Recrutamento. O cargo do Angel precisa ficar acima dos três cargos iniciais.
 
 ## Configurar a VPS
 
