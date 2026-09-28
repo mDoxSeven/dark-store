@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
   ALTA_LISTENING_COMMAND, ALTA_SPOTIFY_EMOJI, altaListeningMessage, isAltaListeningCommand,
+  isSpotifyPresenceActivity,
 } from '../src/alta/listening.ts';
 
 test('comando alta!ouvindo é reconhecido sem capturar textos parecidos', () => {
@@ -11,6 +12,19 @@ test('comando alta!ouvindo é reconhecido sem capturar textos parecidos', () => 
   assert.equal(isAltaListeningCommand('alta!ouvindo'), true);
   assert.equal(isAltaListeningCommand('  ALTA!OUVINDO  '), true);
   assert.equal(isAltaListeningCommand('alta!ouvindoagora'), false);
+});
+
+test('detector aceita as variações de atividade Spotify entregues pelo Discord', () => {
+  assert.equal(isSpotifyPresenceActivity({
+    name: 'Spotify', type: 0, syncId: null, details: null, state: null, assets: null,
+  }), true);
+  assert.equal(isSpotifyPresenceActivity({
+    name: 'Música', type: 0, syncId: 'track-id', details: 'Faixa', state: 'Artista',
+    assets: { largeImage: 'spotify:ab12' },
+  }), true);
+  assert.equal(isSpotifyPresenceActivity({
+    name: 'Visual Studio Code', type: 0, syncId: null, details: 'Editando', state: null, assets: null,
+  }), false);
 });
 
 test('V2 do Spotify mostra faixa, capa, progresso e botão externo', () => {

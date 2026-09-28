@@ -8,6 +8,7 @@ import { ALTA_GUILD_ID } from './rise.js';
 
 export const ALTA_LISTENING_COMMAND = 'alta!ouvindo';
 export const ALTA_SPOTIFY_EMOJI = '<a:spotify:1552396972013396008>';
+export const ALTA_SPOTIFY_EMOJI_ID = '1552396972013396008';
 export const ALTA_SPOTIFY_ACCENT = 0x1db954;
 
 export interface AltaSpotifyTrack {
@@ -55,10 +56,18 @@ export function spotifyTrackFromActivity(activity: Activity): AltaSpotifyTrack {
   };
 }
 
-export function altaListeningMessage(userId: string, track: AltaSpotifyTrack, now = Date.now()): MessageCreateOptions {
+export function isSpotifyPresenceActivity(activity: Pick<Activity, 'name' | 'type' | 'syncId' | 'details' | 'state' | 'assets'>) {
+  const name = activity.name.trim().toLocaleLowerCase('pt-BR');
+  const largeImage = activity.assets?.largeImage ?? '';
+  return name.includes('spotify')
+    || largeImage.startsWith('spotify:')
+    || activity.type === ActivityType.Listening && Boolean(activity.syncId && activity.details && activity.state);
+}
+
+export function altaListeningMessage(userId: string, track: AltaSpotifyTrack, now = Date.now(), spotifyEmoji = ALTA_SPOTIFY_EMOJI): MessageCreateOptions {
   const playback = progress(track, now);
   const content = [
-    `${ALTA_SPOTIFY_EMOJI} **SPOTIFY  ·  TOCANDO AGORA**`,
+    `${spotifyEmoji} **SPOTIFY  ·  TOCANDO AGORA**`,
     `# ${track.title}`,
     `### ${track.artists}`,
     `💿 ${track.album}`,
@@ -112,14 +121,21 @@ export async function handleAltaListeningCommand(message: Message) {
     await message.reply({ content: 'A leitura do Spotify ainda não foi ativada no Angel.', allowedMentions: { repliedUser: false } });
     return true;
   }
-  const activity = message.member?.presence?.activities.find(item => item.type === ActivityType.Listening && item.name === 'Spotify');
+  const presence = message.guild.presences.cache.get(message.author.id) ?? message.member?.presence;
+  const activities = presence?.activities ?? [];
+  const activity = activities.find(isSpotifyPresenceActivity);
+  const spotifyEmoji = message.client.emojis.cache.has(ALTA_SPOTIFY_EMOJI_ID) ? ALTA_SPOTIFY_EMOJI : '🟢';
   if (!activity) {
+    const received = activities.length
+      ? activities.map(item => `${item.name}[${item.type}]`).join(', ')
+      : 'nenhuma';
+    console.warn(`[alta!ouvindo] Spotify não localizado para ${message.author.id}; status=${presence?.status ?? 'ausente'}; atividades=${received}`);
     await message.reply({
-      content: `${ALTA_SPOTIFY_EMOJI} Não encontrei um Spotify tocando no seu perfil. Ative **Mostrar atividade atual como mensagem de status** no Discord e tente novamente.`,
+      content: `${spotifyEmoji} O Discord ainda não entregou sua atividade do Spotify ao Angel. Confirme se ela aparece para **outro membro** deste servidor e tente novamente em alguns segundos.`,
       allowedMentions: { repliedUser: false },
     });
     return true;
   }
-  await message.channel.send(altaListeningMessage(message.author.id, spotifyTrackFromActivity(activity)));
+  await message.channel.send(altaListeningMessage(message.author.id, spotifyTrackFromActivity(activity), Date.now(), spotifyEmoji));
   return true;
 }
