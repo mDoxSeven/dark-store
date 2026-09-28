@@ -63,6 +63,12 @@ O cronograma começa com os horários informados e também possui botões admini
 
 Os cargos oficiais de **Mov Chat**, **Passtime**, **Design**, **Recrutamento** e **Eventos** são reconhecidos pelo ID. O `!criarlideranca` cria ou sincroniza um canal privado de relatório para cada área. Outras áreas podem ser adicionadas depois com `!lideranca_area @Cargo Nome da Área`.
 
+## Recrutamento da Alta
+
+O Angel registra `/rec` somente no servidor oficial da Alta. Membros com o cargo de Recrutamento `1417338258815193219` usam `/rec recrutado:@membro` no canal `1514841820947939508`, selecionam **Born**, **Featured** ou **Purple** e informam se o recrutado veio de **Turquia**, **Nyx**, **Elite** ou **Dragons**. O cargo inicial é aplicado e a ficha Components V2 com avatar é publicada em `1514841659194736650`.
+
+Quando o módulo da Liderança já foi criado, a mesma ficha é espelhada automaticamente no relatório privado da área de Recrutamento. O cargo do Angel precisa ficar acima dos três cargos iniciais.
+
 ## Configurar a VPS
 
 ```bash

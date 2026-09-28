@@ -30,6 +30,9 @@ import { handleVortexSupportButton, handleVortexSupportCommand, handleVortexSupp
 import { VORTEX_SUPPORT_SELECT_ID } from '../vortex/supportMessages.js';
 import { ALTA_GUILD_ID, altaRiseCommand, executeAltaRiseCommand, handleAltaRiseCommand } from '../alta/rise.js';
 import {
+  ALTA_RECRUITMENT_PREFIX, altaRecruitmentCommand, executeAltaRecruitmentCommand, handleAltaRecruitmentSelect,
+} from '../alta/recruitment.js';
+import {
   handlePasstimeButton, handlePasstimeCommand, handlePasstimeModal, handlePasstimeSelect, startPasstimeReminders,
 } from '../passtime/module.js';
 import { PASSTIME_GUILD_ID } from '../passtime/config.js';
@@ -349,9 +352,11 @@ export async function startDiscord(token: string) {
       else if (interaction.isStringSelectMenu() && interaction.customId.startsWith('passtime:schedule:')) await handlePasstimeSelect(interaction);
       else if (interaction.isButton() && interaction.customId.startsWith('leadership:')) await handleLeadershipButton(interaction);
       else if (interaction.isModalSubmit() && interaction.customId.startsWith('leadership:')) await handleLeadershipModal(interaction);
+      else if (interaction.isStringSelectMenu() && interaction.customId.startsWith(ALTA_RECRUITMENT_PREFIX)) await handleAltaRecruitmentSelect(interaction);
       else if (interaction.isStringSelectMenu() && interaction.customId === VORTEX_SUPPORT_SELECT_ID) await handleVortexSupportSelect(interaction);
       else if (interaction.isButton() && interaction.customId.startsWith('vortex:support:')) await handleVortexSupportButton(interaction);
       else if (interaction.isChatInputCommand() && interaction.commandName === 'avisorise') await executeAltaRiseCommand(interaction);
+      else if (interaction.isChatInputCommand() && interaction.commandName === 'rec') await executeAltaRecruitmentCommand(interaction);
       else if (interaction.isChatInputCommand() && interaction.commandName === 'criar') await handleCriar(interaction);
       else if (interaction.isStringSelectMenu() && interaction.customId === SPOTIFY_SELECT_ID) await handleCatalogSelection(interaction, 'spotify');
       else if (interaction.isStringSelectMenu() && interaction.customId === DISCORD_SELECT_ID) await handleCatalogSelection(interaction, 'discord');
@@ -422,11 +427,11 @@ export async function startDiscord(token: string) {
         await guild.commands.set([criarCommand.toJSON()]);
         const altaGuild = await connected.guilds.fetch(ALTA_GUILD_ID).catch(() => null);
         if (altaGuild) {
-          await altaGuild.commands.create(altaRiseCommand.toJSON())
-            .then(() => console.log(`/avisorise registrado no servidor ${ALTA_GUILD_ID}.`))
-            .catch(error => console.error(`/avisorise não registrado no servidor ${ALTA_GUILD_ID}: ${errorText(error)}`));
+          await altaGuild.commands.set([altaRiseCommand.toJSON(), altaRecruitmentCommand.toJSON()])
+            .then(() => console.log(`/avisorise e /rec registrados no servidor ${ALTA_GUILD_ID}.`))
+            .catch(error => console.error(`Comandos da Alta não registrados no servidor ${ALTA_GUILD_ID}: ${errorText(error)}`));
         } else {
-          console.warn(`Angel sem acesso ao servidor ${ALTA_GUILD_ID}; !avisorise e /avisorise indisponíveis nele.`);
+          console.warn(`Angel sem acesso ao servidor ${ALTA_GUILD_ID}; comandos da Alta indisponíveis nele.`);
         }
         const passtimeGuild = await connected.guilds.fetch(PASSTIME_GUILD_ID).catch(() => null);
         if (passtimeGuild) {
