@@ -8,7 +8,7 @@ import {
 
 test('comando alta!ouvindo é reconhecido sem capturar textos parecidos', () => {
   assert.equal(ALTA_LISTENING_COMMAND, 'alta!ouvindo');
-  assert.equal(ALTA_SPOTIFY_EMOJI, '<a:spotify:1552396972013396008>');
+  assert.equal(ALTA_SPOTIFY_EMOJI, '<a:spotify:1554212340277186680>');
   assert.equal(isAltaListeningCommand('alta!ouvindo'), true);
   assert.equal(isAltaListeningCommand('  ALTA!OUVINDO  '), true);
   assert.equal(isAltaListeningCommand('alta!ouvindoagora'), false);
@@ -39,7 +39,7 @@ test('V2 do Spotify mostra faixa, capa, progresso e botão externo', () => {
   }, 39_000);
   assert.equal(payload.flags, 32768);
   const raw = JSON.stringify(payload);
-  assert.match(raw, /1552396972013396008/);
+  assert.match(raw, /1554212340277186680/);
   assert.match(raw, /Redes Sociais/);
   assert.match(raw, /MC Luan da BS/);
   assert.match(raw, /cover\.jpg/);

@@ -73,7 +73,7 @@ Quando o módulo da Liderança já foi criado, somente fichas aprovadas são esp
 
 ## Spotify — Tocando agora
 
-No servidor oficial da Alta, cada membro pode usar `alta!ouvindo` para publicar uma V2 com a música exibida em sua presença do Spotify: capa, faixa, artistas, álbum, progresso e botão direto para ouvir. O recurso usa o emoji animado `<a:spotify:1552396972013396008>` da Pureza.
+No servidor oficial da Alta, cada membro pode usar `alta!ouvindo` para publicar uma V2 com a música exibida em sua presença do Spotify: capa, faixa, artistas, álbum, progresso e botão direto para ouvir. O recurso usa o emoji animado `<a:spotify:1554212340277186680>` da própria Alta.
 
 Antes de ativar, habilite **Presence Intent** na página **Bot** da aplicação do Angel no Discord Developer Portal e defina `DARK_SPOTIFY_PRESENCE_ENABLED=true` no `.env`. A pessoa também precisa manter visível sua atividade atual nas configurações de privacidade do Discord.
 

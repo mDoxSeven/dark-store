@@ -7,8 +7,8 @@ import {
 import { ALTA_GUILD_ID } from './rise.js';
 
 export const ALTA_LISTENING_COMMAND = 'alta!ouvindo';
-export const ALTA_SPOTIFY_EMOJI = '<a:spotify:1552396972013396008>';
-export const ALTA_SPOTIFY_EMOJI_ID = '1552396972013396008';
+export const ALTA_SPOTIFY_EMOJI = '<a:spotify:1554212340277186680>';
+export const ALTA_SPOTIFY_EMOJI_ID = '1554212340277186680';
 export const ALTA_SPOTIFY_ACCENT = 0x1db954;
 
 export interface AltaSpotifyTrack {
