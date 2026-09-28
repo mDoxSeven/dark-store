@@ -27,6 +27,19 @@ test('captura bruta reconhece Spotify antes do processamento do discord.js', () 
       }],
     },
   }), true);
+  assert.equal(rememberRawAltaSpotifyPresence({
+    t: 'GUILD_MEMBERS_CHUNK',
+    d: {
+      guild_id: '1309533710156169337',
+      presences: [{
+        user: { id: '1524414021674205224' },
+        activities: [{
+          name: 'Spotify', type: 2, details: 'Outra Música', state: 'Outro Artista', sync_id: 'track-id-2',
+          assets: { large_image: 'spotify:cover-id-2', large_text: 'Outro Álbum' },
+        }],
+      }],
+    },
+  }), true);
 });
 
 test('detector aceita as variações de atividade Spotify entregues pelo Discord', () => {

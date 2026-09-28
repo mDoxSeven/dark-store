@@ -93,15 +93,11 @@ interface RawPresencePacket {
     guild_id?: string;
     user?: { id?: string };
     activities?: RawActivity[];
+    presences?: Array<{ user?: { id?: string }; activities?: RawActivity[] }>;
   };
 }
 
-export function rememberRawAltaSpotifyPresence(value: unknown) {
-  const packet = value as RawPresencePacket;
-  const guildId = packet.d?.guild_id;
-  const userId = packet.d?.user?.id;
-  if (packet.t !== 'PRESENCE_UPDATE' || guildId !== ALTA_GUILD_ID || !userId) return false;
-  const activities = packet.d?.activities ?? [];
+function rememberRawActivities(guildId: string, userId: string, activities: RawActivity[]) {
   const key = presenceKey(guildId, userId);
   rawPresenceDiagnostics.set(key, activities.length
     ? activities.map(item => `${item.name ?? 'sem-nome'}[${item.type ?? '?'}]`).join(', ')
@@ -134,6 +130,25 @@ export function rememberRawAltaSpotifyPresence(value: unknown) {
   } as unknown as Activity;
   spotifyPresenceCache.set(key, { activity, seenAt: Date.now() });
   return true;
+}
+
+export function rememberRawAltaSpotifyPresence(value: unknown) {
+  const packet = value as RawPresencePacket;
+  const guildId = packet.d?.guild_id;
+  if (guildId !== ALTA_GUILD_ID) return false;
+  if (packet.t === 'PRESENCE_UPDATE') {
+    const userId = packet.d?.user?.id;
+    return userId ? rememberRawActivities(guildId, userId, packet.d?.activities ?? []) : false;
+  }
+  if (packet.t === 'GUILD_MEMBERS_CHUNK') {
+    let captured = false;
+    for (const presence of packet.d?.presences ?? []) {
+      const userId = presence.user?.id;
+      if (userId && rememberRawActivities(guildId, userId, presence.activities ?? [])) captured = true;
+    }
+    return captured;
+  }
+  return false;
 }
 
 function recentSpotifyActivity(guildId: string, userId: string, now = Date.now()) {
