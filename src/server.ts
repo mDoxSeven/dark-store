@@ -7,6 +7,7 @@ import { prisma } from './lib/db.js';
 import { COOKIE, cookieToken, validSession, verifyPassword, newSession, deleteSession, adminExists, LoginLimiter } from './lib/auth.js';
 import * as service from './service.js';
 import { runtimeDiscordStatus, runtimeMode } from './runtime.js';
+import { completeSpotifyAuthorization, spotifyOAuthCallbackMatches } from './alta/spotifyOAuth.js';
 
 async function body(req: IncomingMessage) {
   if (req.headers['content-type']?.split(';')[0] !== 'application/json') throw new service.InputError('Use JSON.');
@@ -27,6 +28,7 @@ async function rawBody(req: IncomingMessage, limit: number) {
   return Buffer.concat(chunks);
 }
 function json(res: ServerResponse, code: number, value: unknown) { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(value)); }
+const htmlEscape = (value: string) => value.replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!);
 export function makeServer() {
   const limiter = new LoginLimiter();
   const server = createServer(async (req, res) => {
@@ -36,12 +38,19 @@ export function makeServer() {
     res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
     const address = server.address();
     const port = typeof address === 'object' && address ? address.port : 3010;
-    if (![`127.0.0.1:${port}`, `localhost:${port}`].includes(req.headers.host || '')) { json(res, 403, { error: 'Host local obrigatório.' }); return; }
-    const path = new URL(req.url || '/', `http://${req.headers.host}`).pathname;
+    const host = req.headers.host || '';
+    const path = new URL(req.url || '/', 'http://127.0.0.1').pathname;
     const method = req.method || 'GET';
+    const spotifyCallback = method === 'GET' && spotifyOAuthCallbackMatches(host, path);
+    if (![`127.0.0.1:${port}`, `localhost:${port}`].includes(host) && !spotifyCallback) { json(res, 403, { error: 'Host local obrigatório.' }); return; }
     try {
       if (!['GET', 'POST'].includes(method)) { json(res, 405, { error: 'Método não permitido.' }); return; }
       if (method === 'POST' && req.headers.origin !== `http://${req.headers.host}`) { json(res, 403, { error: 'Origem inválida.' }); return; }
+      if (spotifyCallback) {
+        const result = await completeSpotifyAuthorization(new URL(req.url || '/', `https://${host}`));
+        const document = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${htmlEscape(result.title)}</title></head><body><main><h1>${htmlEscape(result.title)}</h1><p>${htmlEscape(result.message)}</p><p>Você já pode fechar esta página.</p></main></body></html>`;
+        res.writeHead(result.ok ? 200 : 400, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(document); return;
+      }
       const token = cookieToken(req.headers.cookie);
       if (path === '/api/login' && method === 'POST') {
         if (!limiter.consume()) { res.setHeader('Retry-After', '900'); json(res, 429, { error: 'Muitas tentativas. Aguarde 15 minutos.' }); return; }

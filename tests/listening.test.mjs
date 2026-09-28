@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
-  ALTA_LISTENING_COMMAND, ALTA_SPOTIFY_EMOJI, altaListeningMessage, isAltaListeningCommand,
+  ALTA_LISTENING_COMMAND, ALTA_SPOTIFY_EMOJI, altaListeningMessage, altaSpotifyConnectMessage, isAltaListeningCommand,
   isSpotifyPresenceActivity, rememberRawAltaSpotifyPresence,
 } from '../src/alta/listening.ts';
+import { spotifyOAuthCallbackMatches } from '../src/alta/spotifyOAuth.ts';
 
 test('comando alta!ouvindo é reconhecido sem capturar textos parecidos', () => {
   assert.equal(ALTA_LISTENING_COMMAND, 'alta!ouvindo');
@@ -76,10 +77,37 @@ test('V2 do Spotify mostra faixa, capa, progresso e botão externo', () => {
   assert.match(raw, /https:\/\/open\.spotify\.com\/track\/spotify-track-id/);
 });
 
+test('OAuth gera painel de conexão e limita o callback ao host configurado', () => {
+  const panel = altaSpotifyConnectMessage('https://accounts.spotify.com/authorize?state=teste');
+  const raw = JSON.stringify(panel);
+  assert.match(raw, /CONECTAR SPOTIFY/);
+  assert.match(raw, /ler a faixa atual/);
+  assert.match(raw, /https:\/\/accounts\.spotify\.com\/authorize\?state=teste/);
+  const previous = {
+    id: process.env.SPOTIFY_CLIENT_ID,
+    secret: process.env.SPOTIFY_CLIENT_SECRET,
+    redirect: process.env.SPOTIFY_REDIRECT_URI,
+  };
+  process.env.SPOTIFY_CLIENT_ID = 'client-id';
+  process.env.SPOTIFY_CLIENT_SECRET = 'client-secret';
+  process.env.SPOTIFY_REDIRECT_URI = 'https://angel.exemplo.com/spotify/callback';
+  try {
+    assert.equal(spotifyOAuthCallbackMatches('angel.exemplo.com', '/spotify/callback'), true);
+    assert.equal(spotifyOAuthCallbackMatches('evil.exemplo.com', '/spotify/callback'), false);
+    assert.equal(spotifyOAuthCallbackMatches('angel.exemplo.com', '/outra-rota'), false);
+  } finally {
+    if (previous.id === undefined) delete process.env.SPOTIFY_CLIENT_ID; else process.env.SPOTIFY_CLIENT_ID = previous.id;
+    if (previous.secret === undefined) delete process.env.SPOTIFY_CLIENT_SECRET; else process.env.SPOTIFY_CLIENT_SECRET = previous.secret;
+    if (previous.redirect === undefined) delete process.env.SPOTIFY_REDIRECT_URI; else process.env.SPOTIFY_REDIRECT_URI = previous.redirect;
+  }
+});
+
 test('Angel encaminha o prefixo e habilita presença somente por configuração', async () => {
   const listening = await readFile(new URL('../src/alta/listening.ts', import.meta.url), 'utf8');
   assert.match(listening, /withPresences: true/);
   assert.match(listening, /recentSpotifyActivity/);
+  assert.match(listening, /spotifyCurrentlyPlaying\(message\.author\.id\)/);
+  assert.match(listening, /createSpotifyAuthorization\(message\.author\.id\)/);
   const bot = await readFile(new URL('../src/discord/bot.ts', import.meta.url), 'utf8');
   assert.match(bot, /handleAltaListeningCommand\(message\)/);
   assert.match(bot, /Events\.PresenceUpdate/);
@@ -88,4 +116,12 @@ test('Angel encaminha o prefixo e habilita presença somente por configuração'
   assert.match(bot, /rememberRawAltaSpotifyPresence\(packet\)/);
   assert.match(bot, /DARK_SPOTIFY_PRESENCE_ENABLED === 'true'/);
   assert.match(bot, /GatewayIntentBits\.GuildPresences/);
+  const server = await readFile(new URL('../src/server.ts', import.meta.url), 'utf8');
+  assert.match(server, /completeSpotifyAuthorization/);
+  assert.match(server, /spotifyOAuthCallbackMatches/);
+  const schema = await readFile(new URL('../prisma/schema.prisma', import.meta.url), 'utf8');
+  assert.match(schema, /model SpotifyOAuthState/);
+  assert.match(schema, /model SpotifyConnection/);
+  assert.match(schema, /accessTokenEnc\s+String/);
+  assert.match(schema, /refreshTokenEnc\s+String/);
 });

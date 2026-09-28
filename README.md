@@ -75,7 +75,9 @@ Quando o módulo da Liderança já foi criado, somente fichas aprovadas são esp
 
 No servidor oficial da Alta, cada membro pode usar `alta!ouvindo` para publicar uma V2 com a música exibida em sua presença do Spotify: capa, faixa, artistas, álbum, progresso e botão direto para ouvir. O recurso usa o emoji animado `<a:spotify:1554212340277186680>` da própria Alta.
 
-Antes de ativar, habilite **Presence Intent** na página **Bot** da aplicação do Angel no Discord Developer Portal e defina `DARK_SPOTIFY_PRESENCE_ENABLED=true` no `.env`. A pessoa também precisa manter visível sua atividade atual nas configurações de privacidade do Discord.
+O modo recomendado usa Spotify OAuth e não depende da presença do Discord. Crie um aplicativo no Spotify Developer Dashboard, cadastre uma URL pública HTTPS terminada em `/spotify/callback` e configure `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET` e `SPOTIFY_REDIRECT_URI` no `.env`. Ao primeiro `alta!ouvindo`, cada membro recebe o botão **Conectar Spotify** e autoriza somente o escopo `user-read-currently-playing`. Tokens são criptografados no banco e renovados automaticamente.
+
+Se o OAuth não estiver configurado, o Angel mantém como fallback a presença do Discord quando `DARK_SPOTIFY_PRESENCE_ENABLED=true` e o **Presence Intent** estiver habilitado no Developer Portal.
 
 ## Configurar a VPS
 

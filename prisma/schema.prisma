@@ -452,3 +452,23 @@ model AltaRecruitment {
   @@index([guildId, targetId, active])
   @@index([guildId, status, createdAt])
 }
+
+model SpotifyOAuthState {
+  stateHash     String   @id
+  discordUserId String
+  expiresAt     DateTime
+  createdAt     DateTime @default(now())
+
+  @@index([discordUserId])
+  @@index([expiresAt])
+}
+
+model SpotifyConnection {
+  discordUserId   String   @id
+  accessTokenEnc  String
+  refreshTokenEnc String
+  accessExpiresAt DateTime
+  scope           String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}

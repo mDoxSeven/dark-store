@@ -6,6 +6,9 @@ import {
   type Presence,
 } from 'discord.js';
 import { ALTA_GUILD_ID } from './rise.js';
+import {
+  createSpotifyAuthorization, spotifyCurrentlyPlaying, spotifyOAuthConfigured,
+} from './spotifyOAuth.js';
 
 export const ALTA_LISTENING_COMMAND = 'alta!ouvindo';
 export const ALTA_SPOTIFY_EMOJI = '<a:spotify:1554212340277186680>';
@@ -17,6 +20,7 @@ export interface AltaSpotifyTrack {
   artists: string;
   album: string;
   trackId: string | null;
+  spotifyUrl?: string | null;
   coverUrl: string | null;
   startedAt: number | null;
   endsAt: number | null;
@@ -185,14 +189,15 @@ export function altaListeningMessage(userId: string, track: AltaSpotifyTrack, no
     main,
     { type: 14, divider: true, spacing: 1 },
   ];
-  if (track.trackId) components.push({
+  const spotifyUrl = track.spotifyUrl ?? (track.trackId ? `https://open.spotify.com/track/${encodeURIComponent(track.trackId)}` : null);
+  if (spotifyUrl) components.push({
     type: 1,
     components: [{
       type: 2,
       style: 5,
       label: 'Ouvir no Spotify',
       emoji: { name: '🎧' },
-      url: `https://open.spotify.com/track/${encodeURIComponent(track.trackId)}`,
+      url: spotifyUrl,
     }],
   }, { type: 14, divider: true, spacing: 1 });
   components.push({ type: 10, content: '-# Alta Cúpula  ·  Angel Music' });
@@ -200,6 +205,31 @@ export function altaListeningMessage(userId: string, track: AltaSpotifyTrack, no
     flags: 32768,
     allowedMentions: { parse: [] },
     components: [{ type: 17, accent_color: ALTA_SPOTIFY_ACCENT, components }],
+  } as unknown as MessageCreateOptions;
+}
+
+export function altaSpotifyConnectMessage(authorizeUrl: string, spotifyEmoji = ALTA_SPOTIFY_EMOJI, reconnect = false): MessageCreateOptions {
+  return {
+    flags: 32768,
+    allowedMentions: { parse: [] },
+    components: [{
+      type: 17,
+      accent_color: ALTA_SPOTIFY_ACCENT,
+      components: [
+        { type: 10, content: [
+          `${spotifyEmoji} # CONECTAR SPOTIFY`,
+          reconnect
+            ? 'Sua autorização expirou ou foi revogada. Conecte novamente para renovar o acesso.'
+            : 'Conecte sua conta uma única vez para o Angel consultar diretamente o que está tocando.',
+          '',
+          '> O Angel solicitará somente permissão para **ler a faixa atual**. Ele não poderá controlar sua conta, playlists ou reprodução.',
+        ].join('\n') },
+        { type: 14, divider: true, spacing: 1 },
+        { type: 1, components: [{ type: 2, style: 5, label: reconnect ? 'Reconectar Spotify' : 'Conectar Spotify', emoji: { name: '🎧' }, url: authorizeUrl }] },
+        { type: 14, divider: true, spacing: 1 },
+        { type: 10, content: '-# Alta Cúpula  ·  Conexão segura pelo Spotify OAuth' },
+      ],
+    }],
   } as unknown as MessageCreateOptions;
 }
 
@@ -217,8 +247,42 @@ export async function handleAltaListeningCommand(message: Message) {
     await message.reply({ content: 'Use apenas `alta!ouvindo` para mostrar a música que você está escutando.', allowedMentions: { repliedUser: false } });
     return true;
   }
+  const spotifyEmoji = message.client.emojis.cache.has(ALTA_SPOTIFY_EMOJI_ID) ? ALTA_SPOTIFY_EMOJI : '🟢';
+  if (spotifyOAuthConfigured()) {
+    try {
+      const playback = await spotifyCurrentlyPlaying(message.author.id);
+      if (playback.status === 'playing') {
+        await message.channel.send(altaListeningMessage(message.author.id, {
+          ...playback.track,
+          trackId: null,
+        }, Date.now(), spotifyEmoji));
+        return true;
+      }
+      if (playback.status === 'not_connected' || playback.status === 'reauthorize') {
+        const authorizeUrl = await createSpotifyAuthorization(message.author.id);
+        const delivered = await message.author.send(altaSpotifyConnectMessage(authorizeUrl, spotifyEmoji, playback.status === 'reauthorize'))
+          .then(() => true).catch(() => false);
+        await message.reply({
+          content: delivered
+            ? `${spotifyEmoji} Enviei o botão seguro de conexão no seu privado.`
+            : 'Não consegui enviar o botão no seu privado. Libere mensagens diretas deste servidor e tente novamente.',
+          allowedMentions: { repliedUser: false },
+        });
+        return true;
+      }
+      await message.reply({
+        content: `${spotifyEmoji} Sua conta está conectada, mas o Spotify não informou nenhuma faixa tocando agora. Dê play e tente novamente.`,
+        allowedMentions: { repliedUser: false },
+      });
+      return true;
+    } catch (error) {
+      console.error(`alta!ouvindo OAuth: ${error instanceof Error ? error.message : error}`);
+      await message.reply({ content: 'Não consegui consultar o Spotify agora. Aguarde um pouco e tente novamente.', allowedMentions: { repliedUser: false } });
+      return true;
+    }
+  }
   if (process.env.DARK_SPOTIFY_PRESENCE_ENABLED !== 'true') {
-    await message.reply({ content: 'A leitura do Spotify ainda não foi ativada no Angel.', allowedMentions: { repliedUser: false } });
+    await message.reply({ content: 'O Spotify OAuth ainda não foi configurado no Angel.', allowedMentions: { repliedUser: false } });
     return true;
   }
   let presence = message.guild.presences.cache.get(message.author.id) ?? message.member?.presence;
@@ -236,7 +300,6 @@ export async function handleAltaListeningCommand(message: Message) {
     activity = activities.find(isSpotifyPresenceActivity) ?? recentSpotifyActivity(message.guildId, message.author.id) ?? undefined;
     if (activity && presence) rememberAltaSpotifyPresence(presence);
   }
-  const spotifyEmoji = message.client.emojis.cache.has(ALTA_SPOTIFY_EMOJI_ID) ? ALTA_SPOTIFY_EMOJI : '🟢';
   if (!activity) {
     const received = activities.length
       ? activities.map(item => `${item.name}[${item.type}]`).join(', ')
