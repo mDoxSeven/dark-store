@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
   ALTA_LISTENING_COMMAND, ALTA_SPOTIFY_EMOJI, altaListeningMessage, isAltaListeningCommand,
-  isSpotifyPresenceActivity,
+  isSpotifyPresenceActivity, rememberRawAltaSpotifyPresence,
 } from '../src/alta/listening.ts';
 
 test('comando alta!ouvindo é reconhecido sem capturar textos parecidos', () => {
@@ -12,6 +12,21 @@ test('comando alta!ouvindo é reconhecido sem capturar textos parecidos', () => 
   assert.equal(isAltaListeningCommand('alta!ouvindo'), true);
   assert.equal(isAltaListeningCommand('  ALTA!OUVINDO  '), true);
   assert.equal(isAltaListeningCommand('alta!ouvindoagora'), false);
+});
+
+test('captura bruta reconhece Spotify antes do processamento do discord.js', () => {
+  assert.equal(rememberRawAltaSpotifyPresence({
+    t: 'PRESENCE_UPDATE',
+    d: {
+      guild_id: '1309533710156169337',
+      user: { id: '1002774556269891694' },
+      activities: [{
+        name: 'Spotify', type: 2, details: 'Redes Sociais', state: 'MC Luan da BS', sync_id: 'track-id',
+        timestamps: { start: 1_000, end: 198_000 },
+        assets: { large_image: 'spotify:cover-id', large_text: 'Redes Sociais' },
+      }],
+    },
+  }), true);
 });
 
 test('detector aceita as variações de atividade Spotify entregues pelo Discord', () => {
@@ -56,6 +71,8 @@ test('Angel encaminha o prefixo e habilita presença somente por configuração'
   assert.match(bot, /handleAltaListeningCommand\(message\)/);
   assert.match(bot, /Events\.PresenceUpdate/);
   assert.match(bot, /rememberAltaSpotifyPresence\(newPresence\)/);
+  assert.match(bot, /Events\.Raw/);
+  assert.match(bot, /rememberRawAltaSpotifyPresence\(packet\)/);
   assert.match(bot, /DARK_SPOTIFY_PRESENCE_ENABLED === 'true'/);
   assert.match(bot, /GatewayIntentBits\.GuildPresences/);
 });

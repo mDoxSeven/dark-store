@@ -23,6 +23,7 @@ export interface AltaSpotifyTrack {
 }
 
 const spotifyPresenceCache = new Map<string, { activity: Activity; seenAt: number }>();
+const rawPresenceDiagnostics = new Map<string, string>();
 const presenceKey = (guildId: string, userId: string) => `${guildId}:${userId}`;
 
 const clamp = (value: number, minimum: number, maximum: number) => Math.min(maximum, Math.max(minimum, value));
@@ -73,6 +74,65 @@ export function rememberAltaSpotifyPresence(presence: Presence) {
   const activity = presence.activities.find(isSpotifyPresenceActivity);
   if (!activity) return false;
   spotifyPresenceCache.set(presenceKey(presence.guild.id, presence.userId), { activity, seenAt: Date.now() });
+  return true;
+}
+
+interface RawActivity {
+  name?: string;
+  type?: number;
+  details?: string | null;
+  state?: string | null;
+  sync_id?: string | null;
+  timestamps?: { start?: number | string; end?: number | string };
+  assets?: { large_image?: string | null; large_text?: string | null };
+}
+
+interface RawPresencePacket {
+  t?: string;
+  d?: {
+    guild_id?: string;
+    user?: { id?: string };
+    activities?: RawActivity[];
+  };
+}
+
+export function rememberRawAltaSpotifyPresence(value: unknown) {
+  const packet = value as RawPresencePacket;
+  const guildId = packet.d?.guild_id;
+  const userId = packet.d?.user?.id;
+  if (packet.t !== 'PRESENCE_UPDATE' || guildId !== ALTA_GUILD_ID || !userId) return false;
+  const activities = packet.d?.activities ?? [];
+  const key = presenceKey(guildId, userId);
+  rawPresenceDiagnostics.set(key, activities.length
+    ? activities.map(item => `${item.name ?? 'sem-nome'}[${item.type ?? '?'}]`).join(', ')
+    : 'nenhuma');
+  const raw = activities.find(item => {
+    const name = item.name?.trim().toLocaleLowerCase('pt-BR') ?? '';
+    const image = item.assets?.large_image ?? '';
+    return name.includes('spotify') || image.startsWith('spotify:')
+      || item.type === ActivityType.Listening && Boolean(item.sync_id && item.details && item.state);
+  });
+  if (!raw) return false;
+  const largeImage = raw.assets?.large_image ?? null;
+  const activity = {
+    name: raw.name ?? 'Spotify',
+    type: raw.type ?? ActivityType.Listening,
+    details: raw.details ?? null,
+    state: raw.state ?? null,
+    syncId: raw.sync_id ?? null,
+    timestamps: raw.timestamps ? {
+      start: raw.timestamps.start ? new Date(Number(raw.timestamps.start)) : null,
+      end: raw.timestamps.end ? new Date(Number(raw.timestamps.end)) : null,
+    } : null,
+    assets: raw.assets ? {
+      largeImage,
+      largeText: raw.assets.large_text ?? null,
+      largeImageURL: () => largeImage?.startsWith('spotify:')
+        ? `https://i.scdn.co/image/${largeImage.slice('spotify:'.length)}`
+        : null,
+    } : null,
+  } as unknown as Activity;
+  spotifyPresenceCache.set(key, { activity, seenAt: Date.now() });
   return true;
 }
 
@@ -166,7 +226,8 @@ export async function handleAltaListeningCommand(message: Message) {
     const received = activities.length
       ? activities.map(item => `${item.name}[${item.type}]`).join(', ')
       : 'nenhuma';
-    console.warn(`[alta!ouvindo] Spotify não localizado para ${message.author.id}; status=${presence?.status ?? 'ausente'}; atividades=${received}`);
+    const rawReceived = rawPresenceDiagnostics.get(presenceKey(message.guildId, message.author.id)) ?? 'nenhum pacote recebido';
+    console.warn(`[alta!ouvindo] Spotify não localizado para ${message.author.id}; status=${presence?.status ?? 'ausente'}; atividades=${received}; bruto=${rawReceived}`);
     await message.reply({
       content: `${spotifyEmoji} O Discord ainda não entregou sua atividade do Spotify ao Angel. Confirme se ela aparece para **outro membro** deste servidor e tente novamente em alguns segundos.`,
       allowedMentions: { repliedUser: false },

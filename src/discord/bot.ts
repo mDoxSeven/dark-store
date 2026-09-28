@@ -29,7 +29,7 @@ import { adminCancellationPrompt, cancellationPrompt, cancelledTicketMessage, co
 import { handleVortexSupportButton, handleVortexSupportCommand, handleVortexSupportSelect, sweepVortexSupportTickets } from '../vortex/support.js';
 import { VORTEX_SUPPORT_SELECT_ID } from '../vortex/supportMessages.js';
 import { ALTA_GUILD_ID, altaRiseCommand, executeAltaRiseCommand, handleAltaRiseCommand } from '../alta/rise.js';
-import { handleAltaListeningCommand, rememberAltaSpotifyPresence } from '../alta/listening.js';
+import { handleAltaListeningCommand, rememberAltaSpotifyPresence, rememberRawAltaSpotifyPresence } from '../alta/listening.js';
 import {
   ALTA_RECRUITMENT_PREFIX, altaRecruitmentCommand, altaRecruitmentReportCommand, altaRecruitmentResetCommand,
   executeAltaRecruitmentCommand, executeAltaRecruitmentReport, executeAltaRecruitmentReset,
@@ -408,6 +408,9 @@ export async function startDiscord(token: string) {
   });
   client.on(Events.PresenceUpdate, (_oldPresence, newPresence) => {
     rememberAltaSpotifyPresence(newPresence);
+  });
+  client.on(Events.Raw, packet => {
+    rememberRawAltaSpotifyPresence(packet);
   });
   client.on(Events.GuildAuditLogEntryCreate, (entry, guild) => {
     void (async () => {
