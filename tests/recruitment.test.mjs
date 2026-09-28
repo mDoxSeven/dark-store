@@ -25,8 +25,12 @@ test('/rec do Angel fica restrito ao servidor, canal e cargo de Recrutamento da 
   assert.equal(command.options?.[0]?.name, 'recrutado');
   assert.equal(command.options?.[0]?.required, true);
   assert.equal(altaRecruitmentReportCommand.toJSON().name, 'relatoriorec');
-  assert.equal(altaRecruitmentResetCommand.toJSON().name, 'resetrec');
-  assert.equal(altaRecruitmentResetCommand.toJSON().options?.find(option => option.name === 'confirmar')?.required, true);
+  const reset = altaRecruitmentResetCommand.toJSON();
+  assert.equal(reset.name, 'resetrec');
+  assert.equal(reset.options?.[0]?.name, 'confirmar');
+  assert.equal(reset.options?.[0]?.required, true);
+  assert.equal(reset.options?.[1]?.name, 'membro');
+  assert.notEqual(reset.options?.[1]?.required, true);
 });
 
 test('ficha REC pendente usa Components V2, avatar e botões de análise', () => {

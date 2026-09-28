@@ -131,13 +131,13 @@ export const altaRecruitmentResetCommand = new SlashCommandBuilder()
   .setName('resetrec')
   .setDescription('Reinicia as estatísticas de recrutamento preservando o histórico.')
   .setDMPermission(false)
-  .addUserOption(option => option
-    .setName('membro')
-    .setDescription('Recrutador específico; deixe vazio para resetar todos'))
   .addBooleanOption(option => option
     .setName('confirmar')
     .setDescription('Confirma o reset das estatísticas selecionadas')
-    .setRequired(true));
+    .setRequired(true))
+  .addUserOption(option => option
+    .setName('membro')
+    .setDescription('Recrutador específico; deixe vazio para resetar todos'));
 
 export async function executeAltaRecruitmentCommand(interaction: ChatInputCommandInteraction) {
   if (!interaction.inCachedGuild()) throw new Error('Use este comando dentro do servidor.');
