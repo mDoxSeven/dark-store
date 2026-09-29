@@ -41,17 +41,25 @@ function duration(value: number) {
 
 function progress(track: AltaSpotifyTrack, now: number) {
   if (track.startedAt === null || track.endsAt === null || track.endsAt <= track.startedAt) {
-    return { bar: '━━━━━━━━━━━━', elapsed: '0:00', total: '—' };
+    return { bar: '●─────────────', elapsed: '0:00', total: '—' };
   }
   const total = track.endsAt - track.startedAt;
   const elapsed = clamp(now - track.startedAt, 0, total);
-  const completed = clamp(Math.round(elapsed / total * 12), 0, 12);
+  const completed = clamp(Math.round(elapsed / total * 14), 0, 14);
   return {
-    bar: `${'━'.repeat(completed)}${completed < 12 ? '●' : ''}${'─'.repeat(Math.max(0, 11 - completed))}`,
+    bar: completed >= 14
+      ? '━━━━━━━━━━━━━━●'
+      : `${'━'.repeat(completed)}●${'─'.repeat(14 - completed)}`,
     elapsed: duration(elapsed),
     total: duration(total),
   };
 }
+
+const discordText = (value: string, maximum = 100) => {
+  const compact = value.replace(/\s+/g, ' ').trim();
+  const shortened = compact.length > maximum ? `${compact.slice(0, maximum - 1)}…` : compact;
+  return shortened.replace(/([\\`*_~|>])/g, '\\$1');
+};
 
 export function spotifyTrackFromActivity(activity: Activity): AltaSpotifyTrack {
   return {
@@ -170,41 +178,59 @@ function recentSpotifyActivity(guildId: string, userId: string, now = Date.now()
 
 export function altaListeningMessage(userId: string, track: AltaSpotifyTrack, now = Date.now(), spotifyEmoji = ALTA_SPOTIFY_EMOJI): MessageCreateOptions {
   const playback = progress(track, now);
-  const content = [
+  const title = discordText(track.title, 90);
+  const artists = discordText(track.artists, 120);
+  const album = discordText(track.album, 100);
+  const trackDetails = [
     `${spotifyEmoji} **SPOTIFY  ·  TOCANDO AGORA**`,
-    `# ${track.title}`,
-    `### ${track.artists}`,
-    `💿 ${track.album}`,
-    '',
-    `\`${playback.elapsed}\`  ${playback.bar}  \`${playback.total}\``,
-    '',
-    `-# <@${userId}> está ouvindo esta faixa agora.`,
+    `## ${title}`,
+    `**${artists}**`,
+    `-# 💿 ${album}`,
   ].join('\n');
   const main = track.coverUrl ? {
     type: 9,
-    components: [{ type: 10, content }],
-    accessory: { type: 11, media: { url: track.coverUrl }, description: `Capa de ${track.title}` },
-  } : { type: 10, content };
+    components: [{ type: 10, content: trackDetails }],
+    accessory: { type: 11, media: { url: track.coverUrl }, description: `Capa de ${discordText(track.title, 60)}` },
+  } : { type: 10, content: trackDetails };
   const components: Array<Record<string, unknown>> = [
     main,
     { type: 14, divider: true, spacing: 1 },
+    { type: 10, content: [
+      `\`${playback.elapsed}\`  ${playback.bar}  \`${playback.total}\``,
+      '-# ▶ Reproduzindo agora pelo Spotify',
+    ].join('\n') },
   ];
   const spotifyUrl = track.spotifyUrl ?? (track.trackId ? `https://open.spotify.com/track/${encodeURIComponent(track.trackId)}` : null);
   if (spotifyUrl) components.push({
+    type: 14,
+    divider: true,
+    spacing: 1,
+  }, {
     type: 1,
     components: [{
       type: 2,
       style: 5,
       label: 'Ouvir no Spotify',
-      emoji: { name: '🎧' },
+      emoji: spotifyEmoji === ALTA_SPOTIFY_EMOJI
+        ? { id: ALTA_SPOTIFY_EMOJI_ID, name: 'spotify', animated: true }
+        : { name: '🎧' },
       url: spotifyUrl,
     }],
-  }, { type: 14, divider: true, spacing: 1 });
-  components.push({ type: 10, content: '-# Alta Cúpula  ·  Angel Music' });
+  });
+  components.push(
+    { type: 14, divider: true, spacing: 1 },
+    { type: 10, content: `-# ✦ <@${userId}>  ·  Alta Cúpula  ·  Angel Music` },
+  );
   return {
     flags: 32768,
     allowedMentions: { parse: [] },
-    components: [{ type: 17, accent_color: ALTA_SPOTIFY_ACCENT, components }],
+    components: [
+      { type: 10, content: [
+        '## 🎶  |  Tocando Agora',
+        `• **${title}**`,
+      ].join('\n') },
+      { type: 17, accent_color: ALTA_SPOTIFY_ACCENT, components },
+    ],
   } as unknown as MessageCreateOptions;
 }
 
