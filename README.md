@@ -63,6 +63,14 @@ O cronograma começa com os horários informados e também possui botões admini
 
 Os cargos oficiais de **Mov Chat**, **Passtime**, **Design**, **Recrutamento** e **Eventos** são reconhecidos pelo ID. O `!criarlideranca` cria ou sincroniza um canal privado de relatório para cada área. Outras áreas podem ser adicionadas depois com `!lideranca_area @Cargo Nome da Área`.
 
+## Mov Chat da Alta
+
+No servidor oficial da Alta (`1309533710156169337`), um administrador inicia o módulo com `!config_chat`. Use `!config_chat adicionar #canal 1` para monitorar um canal e definir os pontos por mensagem, `!config_chat remover #canal`, `!config_chat cargo @cargo` para liberar a gestão da área e `!config_chat cooldown 10` para ajustar a proteção antispam. Todas as mensagens humanas são contabilizadas; apenas mensagens com conteúdo mínimo e fora do cooldown recebem pontos.
+
+`!chat` mostra o desempenho individual, `!mensagens` publica o ranking, e `!dar_pontos @membro quantidade motivo` ou `!remover_pontos @membro quantidade motivo` registram ajustes auditáveis. `!resetar_chat` e `!resetar_rank` são aliases seguros da mesma ação: após confirmação, encerram mensagens e pontos juntos, preservam o histórico e iniciam um novo ciclo.
+
+Toda segunda-feira às `00:05`, no horário de Brasília, o Angel fecha automaticamente o ciclo e publica o relatório completo no canal `1554586776939794532` do servidor de Liderança (`1542871650473746454`). O relatório contém mensagens totais, mensagens pontuadas, pontos automáticos, ajustes da gestão e total individual. Falhas de entrega ficam em uma fila persistente e são tentadas novamente sem perder o ciclo encerrado.
+
 ## Recrutamento da Alta
 
 O Angel registra `/rec` somente no servidor oficial da Alta. Membros com o cargo de Recrutamento `1417338258815193219` usam `/rec recrutado:@membro` no canal `1514841820947939508`, selecionam **Born**, **Featured** ou **Purple** e informam se o recrutado veio de **Turquia**, **Nyx**, **Elite** ou **Dragons**. A ficha Components V2 com avatar é publicada em `1514841659194736650` aguardando validação; o cargo inicial só é aplicado depois da aprovação.

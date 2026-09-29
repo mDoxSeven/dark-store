@@ -472,3 +472,75 @@ model SpotifyConnection {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
+
+model AltaMovChatConfig {
+  guildId               String   @id
+  managerRoleId         String?
+  reportGuildId         String   @default("1542871650473746454")
+  reportChannelId       String   @default("1554586776939794532")
+  pointsCooldownSeconds Int      @default(10)
+  cycleStartedAt        DateTime @default(now())
+  lastReportAt          DateTime?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model AltaMovChatChannel {
+  id               String   @id @default(cuid())
+  guildId          String
+  channelId        String
+  pointsPerMessage Int      @default(1)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([guildId, channelId])
+  @@index([guildId])
+}
+
+model AltaMovChatStat {
+  id                   String   @id @default(cuid())
+  guildId              String
+  userId               String
+  messageCount         Int      @default(0)
+  scoredMessageCount   Int      @default(0)
+  chatPoints           Int      @default(0)
+  manualPoints         Int      @default(0)
+  lastScoredAt         DateTime?
+  updatedAt            DateTime @updatedAt
+
+  @@unique([guildId, userId])
+  @@index([guildId, chatPoints, manualPoints])
+}
+
+model AltaMovChatAdjustment {
+  id        String   @id @default(cuid())
+  guildId   String
+  userId    String
+  amount    Int
+  reason    String
+  actorId   String
+  createdAt DateTime @default(now())
+
+  @@index([guildId, userId, createdAt])
+}
+
+model AltaMovChatReport {
+  id                 String   @id @default(cuid())
+  guildId            String
+  cycleStartedAt     DateTime
+  cycleEndedAt       DateTime
+  trigger            String
+  triggeredBy        String?
+  reportGuildId      String
+  reportChannelId    String
+  status             String   @default("PENDING")
+  entriesJson        String
+  messageIdsJson     String   @default("[]")
+  participantCount   Int
+  totalMessages      Int
+  totalScoredMessages Int
+  totalPoints        Int
+  createdAt          DateTime @default(now())
+
+  @@index([guildId, cycleEndedAt])
+}

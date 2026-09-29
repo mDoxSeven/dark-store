@@ -1,0 +1,16 @@
+import { ALTA_GUILD_ID } from './rise.js';
+
+export const ALTA_MOV_CHAT_GUILD_ID = ALTA_GUILD_ID;
+export const ALTA_MOV_CHAT_REPORT_GUILD_ID = '1542871650473746454';
+export const ALTA_MOV_CHAT_REPORT_CHANNEL_ID = '1554586776939794532';
+export const ALTA_MOV_CHAT_ACCENT = 0x7a163d;
+export const ALTA_MOV_CHAT_REPORT_HOUR = 0;
+export const ALTA_MOV_CHAT_REPORT_MINUTE = 5;
+export const ALTA_MOV_CHAT_RESET_PREFIX = 'movchat:reset:';
+
+export const ALTA_MOV_CHAT_COMMANDS = new Set([
+  '!config_chat', '!chat', '!mensagens', '!dar_pontos', '!remover_pontos', '!resetar_chat', '!resetar_rank',
+]);
+
+export const movChatCommandName = (content: string) => content.trim().split(/\s+/, 1)[0]?.toLocaleLowerCase('pt-BR') ?? '';
+export const isAltaMovChatCommand = (content: string) => ALTA_MOV_CHAT_COMMANDS.has(movChatCommandName(content));

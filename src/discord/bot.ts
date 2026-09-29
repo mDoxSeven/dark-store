@@ -31,6 +31,9 @@ import { VORTEX_SUPPORT_SELECT_ID } from '../vortex/supportMessages.js';
 import { ALTA_GUILD_ID, altaRiseCommand, executeAltaRiseCommand, handleAltaRiseCommand } from '../alta/rise.js';
 import { handleAltaListeningCommand, rememberAltaSpotifyPresence, rememberRawAltaSpotifyPresence } from '../alta/listening.js';
 import {
+  handleAltaMovChatButton, handleAltaMovChatCommand, startAltaMovChatReports, trackAltaMovChatMessage,
+} from '../alta/movChat.js';
+import {
   ALTA_RECRUITMENT_PREFIX, altaRecruitmentCommand, altaRecruitmentReportCommand, altaRecruitmentResetCommand,
   executeAltaRecruitmentCommand, executeAltaRecruitmentReport, executeAltaRecruitmentReset,
   handleAltaRecruitmentButton, handleAltaRecruitmentSelect, refreshAltaRecruitmentAnnouncement,
@@ -359,6 +362,7 @@ export async function startDiscord(token: string) {
       else if (interaction.isModalSubmit() && interaction.customId.startsWith('leadership:')) await handleLeadershipModal(interaction);
       else if (interaction.isButton() && interaction.customId.startsWith(`${ALTA_RECRUITMENT_PREFIX}review:`)) await handleAltaRecruitmentButton(interaction);
       else if (interaction.isStringSelectMenu() && interaction.customId.startsWith(ALTA_RECRUITMENT_PREFIX)) await handleAltaRecruitmentSelect(interaction);
+      else if (interaction.isButton() && interaction.customId.startsWith('movchat:reset:')) await handleAltaMovChatButton(interaction);
       else if (interaction.isStringSelectMenu() && interaction.customId === VORTEX_SUPPORT_SELECT_ID) await handleVortexSupportSelect(interaction);
       else if (interaction.isButton() && interaction.customId.startsWith('vortex:support:')) await handleVortexSupportButton(interaction);
       else if (interaction.isChatInputCommand() && interaction.commandName === 'avisorise') await executeAltaRiseCommand(interaction);
@@ -388,11 +392,13 @@ export async function startDiscord(token: string) {
   client.on(Events.MessageCreate, message => {
     if (message.author.bot || !message.inGuild()) return;
     void (async () => {
+      if (await handleAltaMovChatCommand(message)) return;
       if (await handlePasstimeCommand(message)) return;
       if (await handleLeadershipCommand(message)) return;
       if (await handleAltaRiseCommand(message)) return;
       if (await handleAltaListeningCommand(message)) return;
-      await handleVortexSupportCommand(message);
+      if (await handleVortexSupportCommand(message)) return;
+      await trackAltaMovChatMessage(message);
     })().catch(error => console.error(`comando por prefixo: ${errorText(error)}`));
   });
   client.on(Events.GuildMemberAdd, joined => {
@@ -463,6 +469,7 @@ export async function startDiscord(token: string) {
         const leadershipGuild = await connected.guilds.fetch(LEADERSHIP_GUILD_ID).catch(() => null);
         if (leadershipGuild) {
           await refreshLinkedLeadershipSchedule(connected).catch(error => console.error(`Cronograma Liderança não sincronizado: ${errorText(error)}`));
+          startAltaMovChatReports(connected);
           console.log(`Módulo Liderança disponível no servidor ${LEADERSHIP_GUILD_ID}.`);
         }
         else console.warn(`Angel sem acesso ao servidor Liderança ${LEADERSHIP_GUILD_ID}.`);
