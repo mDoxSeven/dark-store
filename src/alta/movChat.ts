@@ -12,7 +12,9 @@ import {
   ALTA_MOV_CHAT_GUILD_ID,
   ALTA_MOV_CHAT_REPORT_CHANNEL_ID,
   ALTA_MOV_CHAT_REPORT_GUILD_ID,
+  ALTA_MOV_CHAT_REPORT_HOUR,
   ALTA_MOV_CHAT_REPORT_MINUTE,
+  ALTA_MOV_CHAT_REPORT_WEEKDAY,
   ALTA_MOV_CHAT_RESET_PREFIX,
   isAltaMovChatCommand,
   movChatCommandName,
@@ -72,16 +74,17 @@ async function assertManager(message: Message<true>, config?: AltaMovChatConfig 
   if (!await managerAccess(member, config)) throw new Error('Somente a gestão do Mov Chat ou administradores podem usar esta função.');
 }
 
-function currentBrazilWeekBoundary(now = new Date()) {
+export function currentBrazilReportBoundary(now = new Date()) {
   // O Brasil opera em UTC-3 sem horário de verão. O deslocamento converte o relógio para o calendário de Brasília.
   const local = new Date(now.getTime() - 3 * 60 * 60 * 1000);
-  const daysSinceMonday = (local.getUTCDay() + 6) % 7;
-  const monday = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate() - daysSinceMonday);
-  return new Date(monday + 3 * 60 * 60 * 1000 + ALTA_MOV_CHAT_REPORT_MINUTE * 60 * 1000);
+  const daysSinceReportDay = (local.getUTCDay() - ALTA_MOV_CHAT_REPORT_WEEKDAY + 7) % 7;
+  const reportDay = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate() - daysSinceReportDay);
+  return new Date(reportDay + 3 * 60 * 60 * 1000
+    + ALTA_MOV_CHAT_REPORT_HOUR * 60 * 60 * 1000
+    + ALTA_MOV_CHAT_REPORT_MINUTE * 60 * 1000);
 }
 
 async function deliverReport(client: Client, report: AltaMovChatReport) {
-  if (report.status === 'SENT') return JSON.parse(report.messageIdsJson) as string[];
   const entries = JSON.parse(report.entriesJson) as MovChatRankingItem[];
   const sorted = [...entries].sort((a, b) => totalPoints(b) - totalPoints(a) || b.messageCount - a.messageCount);
   const pages = Math.max(1, Math.ceil(sorted.length / 15));
@@ -105,17 +108,17 @@ async function deliverReport(client: Client, report: AltaMovChatReport) {
           points: report.totalPoints,
         },
       }) as MessageCreateOptions));
+      await prisma.altaMovChatReport.update({
+        where: { id: report.id },
+        data: { messageIdsJson: JSON.stringify(sent.map(message => message.id)) },
+      });
     }
   } catch (error) {
     await Promise.all(sent.map(message => message.delete().catch(() => null)));
+    await prisma.altaMovChatReport.update({ where: { id: report.id }, data: { messageIdsJson: '[]' } }).catch(() => null);
     throw error;
   }
-  const ids = sent.map(message => message.id);
-  await prisma.$transaction([
-    prisma.altaMovChatReport.update({ where: { id: report.id }, data: { status: 'SENT', messageIdsJson: JSON.stringify(ids) } }),
-    prisma.altaMovChatConfig.update({ where: { guildId: report.guildId }, data: { lastReportAt: new Date() } }),
-  ]);
-  return ids;
+  return sent.map(message => message.id);
 }
 
 async function closeCycle(client: Client, trigger: 'AUTOMATIC' | 'MANUAL', triggeredBy?: string) {
@@ -123,7 +126,9 @@ async function closeCycle(client: Client, trigger: 'AUTOMATIC' | 'MANUAL', trigg
   if (reportLocks.has(guildId)) throw new Error('O ciclo do Mov Chat já está sendo encerrado. Aguarde.');
   reportLocks.add(guildId);
   try {
-    const report = await queueMutation(guildId, async () => {
+    return await queueMutation(guildId, async () => {
+      const pending = await prisma.altaMovChatReport.findFirst({ where: { guildId, status: 'PENDING' } });
+      if (pending) throw new Error('Já existe um relatório aguardando validação do Discord. O Angel tentará enviá-lo novamente.');
       const config = await configFor(guildId);
       const stats = await prisma.altaMovChatStat.findMany({ where: { guildId } });
       const endedAt = new Date();
@@ -133,8 +138,7 @@ async function closeCycle(client: Client, trigger: 'AUTOMATIC' | 'MANUAL', trigg
         scored: result.scored + item.scoredMessageCount,
         points: result.points + totalPoints(item),
       }), { messages: 0, scored: 0, points: 0 });
-      return prisma.$transaction(async transaction => {
-        const created = await transaction.altaMovChatReport.create({ data: {
+      const report = await prisma.altaMovChatReport.create({ data: {
           guildId,
           cycleStartedAt: config.cycleStartedAt,
           cycleEndedAt: endedAt,
@@ -147,34 +151,48 @@ async function closeCycle(client: Client, trigger: 'AUTOMATIC' | 'MANUAL', trigg
           totalMessages: totals.messages,
           totalScoredMessages: totals.scored,
           totalPoints: totals.points,
-        } });
-        await transaction.altaMovChatStat.deleteMany({ where: { guildId } });
-        await transaction.altaMovChatConfig.update({ where: { guildId }, data: { cycleStartedAt: endedAt } });
-        return created;
-      });
+      } });
+      try {
+        const ids = await deliverReport(client, report);
+        await prisma.$transaction([
+          prisma.altaMovChatReport.update({ where: { id: report.id }, data: { status: 'SENT', messageIdsJson: JSON.stringify(ids) } }),
+          prisma.altaMovChatStat.deleteMany({ where: { guildId } }),
+          prisma.altaMovChatConfig.update({ where: { guildId }, data: { cycleStartedAt: endedAt, lastReportAt: new Date() } }),
+        ]);
+        return { report: { ...report, status: 'SENT', messageIdsJson: JSON.stringify(ids) }, delivered: true, messageIds: ids };
+      } catch (error) {
+        console.error(`relatório Mov Chat ${report.id} não validado; ciclo preservado: ${errorText(error)}`);
+        return { report, delivered: false, messageIds: [] };
+      }
     });
-    try {
-      const ids = await deliverReport(client, report);
-      return { report, delivered: true, messageIds: ids };
-    } catch (error) {
-      console.error(`relatório Mov Chat ${report.id} pendente: ${errorText(error)}`);
-      return { report, delivered: false, messageIds: [] };
-    }
   } finally {
     reportLocks.delete(guildId);
   }
 }
 
-async function retryPendingReports(client: Client) {
-  const pending = await prisma.altaMovChatReport.findMany({ where: { guildId: ALTA_MOV_CHAT_GUILD_ID, status: 'PENDING' }, orderBy: { createdAt: 'asc' }, take: 5 });
-  for (const report of pending) await deliverReport(client, report).catch(error => console.error(`reenvio relatório Mov Chat ${report.id}: ${errorText(error)}`));
+async function retryPendingReport(client: Client) {
+  const pending = await prisma.altaMovChatReport.findFirst({
+    where: { guildId: ALTA_MOV_CHAT_GUILD_ID, status: 'PENDING' },
+    orderBy: { createdAt: 'asc' },
+  });
+  if (!pending) return false;
+  const guild = await client.guilds.fetch(pending.reportGuildId).catch(() => null);
+  const channel = guild ? await guild.channels.fetch(pending.reportChannelId).catch(() => null) : null;
+  if (channel?.isTextBased()) {
+    const ids = JSON.parse(pending.messageIdsJson) as string[];
+    await Promise.all(ids.map(id => channel.messages.delete(id).catch(() => null)));
+  }
+  await prisma.altaMovChatReport.delete({ where: { id: pending.id } });
+  await closeCycle(client, pending.trigger === 'MANUAL' ? 'MANUAL' : 'AUTOMATIC', pending.triggeredBy ?? undefined);
+  return true;
 }
 
 export async function sweepAltaMovChatReports(client: Client, now = new Date()) {
-  await retryPendingReports(client);
+  if (reportLocks.has(ALTA_MOV_CHAT_GUILD_ID)) return false;
+  if (await retryPendingReport(client)) return true;
   const config = await prisma.altaMovChatConfig.findUnique({ where: { guildId: ALTA_MOV_CHAT_GUILD_ID } });
   if (!config || reportLocks.has(config.guildId)) return false;
-  const boundary = currentBrazilWeekBoundary(now);
+  const boundary = currentBrazilReportBoundary(now);
   if (now < boundary || config.cycleStartedAt >= boundary) return false;
   await closeCycle(client, 'AUTOMATIC');
   return true;
@@ -354,7 +372,7 @@ export async function handleAltaMovChatButton(interaction: ButtonInteraction) {
     '',
     result.delivered
       ? `Relatório enviado para <#${result.report.reportChannelId}> e novo ciclo iniciado.`
-      : 'O novo ciclo foi iniciado e o relatório ficou salvo na fila. O Angel tentará entregá-lo novamente automaticamente.',
+      : 'O Discord não validou o envio completo. Mensagens e pontos foram preservados; o Angel tentará novamente automaticamente.',
   ].join('\n')) as any);
   return true;
 }

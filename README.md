@@ -69,7 +69,7 @@ No servidor oficial da Alta (`1309533710156169337`), um administrador inicia o m
 
 `!chat` mostra o desempenho individual, `!mensagens` publica o ranking, e `!dar_pontos @membro quantidade motivo` ou `!remover_pontos @membro quantidade motivo` registram ajustes auditáveis. `!resetar_chat` e `!resetar_rank` são aliases seguros da mesma ação: após confirmação, encerram mensagens e pontos juntos, preservam o histórico e iniciam um novo ciclo.
 
-Toda segunda-feira às `00:05`, no horário de Brasília, o Angel fecha automaticamente o ciclo e publica o relatório completo no canal `1554586776939794532` do servidor de Liderança (`1542871650473746454`). O relatório contém mensagens totais, mensagens pontuadas, pontos automáticos, ajustes da gestão e total individual. Falhas de entrega ficam em uma fila persistente e são tentadas novamente sem perder o ciclo encerrado.
+Todo sábado às `16:00`, no horário de Brasília, o Angel publica o relatório completo no canal `1554586776939794532` do servidor de Liderança (`1542871650473746454`). O relatório contém mensagens totais, mensagens pontuadas, pontos automáticos, ajustes da gestão e total individual. Mensagens e pontos só são reiniciados depois que o Discord confirma o envio de todas as páginas; se a entrega falhar, o ciclo permanece intacto e o Angel tenta novamente.
 
 ## Recrutamento da Alta
 

@@ -8,6 +8,7 @@ import {
   ALTA_MOV_CHAT_REPORT_GUILD_ID,
   isAltaMovChatCommand,
 } from '../src/alta/movChatConfig.ts';
+import { currentBrazilReportBoundary } from '../src/alta/movChat.ts';
 import {
   movChatConfigMessage,
   movChatMemberMessage,
@@ -26,6 +27,12 @@ test('Mov Chat usa os servidores e canal informados e mantém os comandos atuais
   assert.equal(isAltaMovChatCommand('!chatinho'), false);
 });
 
+test('fechamento semanal ocorre sábado às 16:00 no horário de Brasília', () => {
+  const boundary = currentBrazilReportBoundary(new Date('2026-10-03T18:59:00.000Z'));
+  assert.equal(boundary.toISOString(), '2026-10-03T19:00:00.000Z');
+  assert.equal(currentBrazilReportBoundary(new Date('2026-10-03T19:30:00.000Z')).toISOString(), '2026-10-03T19:00:00.000Z');
+});
+
 test('painéis V2 mostram configuração, desempenho e confirmação unificada', () => {
   const config = JSON.stringify(movChatConfigMessage({ managerRoleId: '10', pointsCooldownSeconds: 10 }, [
     { channelId: '20', pointsPerMessage: 2 },
@@ -33,7 +40,8 @@ test('painéis V2 mostram configuração, desempenho e confirmação unificada',
   assert.match(config, /CONFIGURAÇÃO — MOV CHAT/);
   assert.match(config, /<#20>/);
   assert.match(config, /2 ponto\(s\)/);
-  assert.match(config, /segunda-feira/);
+  assert.match(config, /sábado/);
+  assert.match(config, /16:00/);
 
   const member = JSON.stringify(movChatMemberMessage({
     userId: '30', messageCount: 20, scoredMessageCount: 10, chatPoints: 20, manualPoints: -2,
@@ -42,7 +50,7 @@ test('painéis V2 mostram configuração, desempenho e confirmação unificada',
   assert.match(member, /18/);
 
   const reset = JSON.stringify(movChatResetPrompt('40', new Date('2026-09-28T03:05:00.000Z')));
-  assert.match(reset, /Mensagens e pontos serão reiniciados juntos/);
+  assert.match(reset, /só serão reiniciados depois que o Discord confirmar/);
   assert.match(reset, /movchat:reset:40:/);
 });
 

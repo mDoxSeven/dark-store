@@ -33,7 +33,7 @@ export function movChatConfigMessage(config: {
     '',
     `**Cargo gestor:** ${config.managerRoleId ? `<@&${config.managerRoleId}>` : 'somente administradores'}`,
     `**Cooldown dos pontos:** ${config.pointsCooldownSeconds} segundo(s)`,
-    '**Relatório automático:** segunda-feira, `00:05` • horário de Brasília',
+    '**Relatório automático:** sábado, `16:00` • horário de Brasília',
     '**Destino:** servidor Liderança Alta',
     '',
     '### Canais monitorados',
@@ -89,7 +89,7 @@ export function movChatResetPrompt(userId: string, cycleStartedAt: Date) {
     '# ⚠️ | ENCERRAR CICLO SEMANAL',
     'Esta ação enviará o relatório completo para a Liderança e iniciará um novo ciclo.',
     '',
-    '> **Mensagens e pontos serão reiniciados juntos. O histórico do relatório será preservado.**',
+    '> **Mensagens e pontos só serão reiniciados depois que o Discord confirmar o envio completo do relatório.**',
   ].join('\n'), {
     footer: 'Alta Cúpula • Mov Chat • confirmação obrigatória',
     rows: [{ type: 1, components: [
