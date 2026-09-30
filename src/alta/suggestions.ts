@@ -76,7 +76,7 @@ async function setup(client: Client) {
   // Emojis são cadastrados diretamente na Alta para evitar dependência de emojis externos.
   const existing = await guild.emojis.fetch();
   for (const key of ['alta', 'bulb', 'family', 'internal', 'ideas', 'bot', 'other', 'arrow', 'clock', 'check', 'cross']) {
-    const name = `alta_sug_chrome_${key}`;
+    const name = key === 'alta' ? 'alta_sug_chrome_alta_v2' : `alta_sug_chrome_${key}`;
     try {
       const emoji = existing.find(item => item.name === name) ?? await guild.emojis.create({ name,
         attachment: fileURLToPath(new URL(`../../public/suggestion-emojis/${key}.png`, import.meta.url)), reason: 'Painel cromado de sugestões da Alta' });
