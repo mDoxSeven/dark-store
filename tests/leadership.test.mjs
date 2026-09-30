@@ -14,7 +14,7 @@ test('módulo Liderança usa o servidor, cargo liberado e cargos administrativos
     '1542873754823032883', '1542876909405216889', '1542873757792731176', '1542873759885820037',
   ]);
   assert.deepEqual(LEADERSHIP_AREAS.map(area => [area.key, area.roleId]), [
-    ['mov-chat', '1542876179353051228'],
+    ['mov-chat', '1554853588285788251'],
     ['passtime', '1542876176773681314'],
     ['design', '1542876173875286086'],
     ['recrutamento', '1542873767926173878'],

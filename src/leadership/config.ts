@@ -8,7 +8,7 @@ export const LEADERSHIP_ADMIN_ROLE_IDS = [
 ] as const;
 
 export const LEADERSHIP_AREAS = [
-  { key: 'mov-chat', name: 'Mov Chat', roleId: '1542876179353051228' },
+  { key: 'mov-chat', name: 'Mov Chat', roleId: '1554853588285788251' },
   { key: 'passtime', name: 'Passtime', roleId: '1542876176773681314' },
   { key: 'design', name: 'Design', roleId: '1542876173875286086' },
   { key: 'recrutamento', name: 'Recrutamento', roleId: '1542873767926173878' },

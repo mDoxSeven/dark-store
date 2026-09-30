@@ -178,6 +178,11 @@ async function requireConfig() {
 }
 
 async function combinedScheduleEntries() {
+  // Atualiza também os horários já salvos com o cargo anterior da área.
+  await prisma.leadershipScheduleEntry.updateMany({
+    where: { guildId: LEADERSHIP_GUILD_ID, roleId: '1542876179353051228' },
+    data: { roleId: LEADERSHIP_AREAS.find(area => area.key === 'mov-chat')!.roleId },
+  });
   const [leadership, passtime] = await Promise.all([
     prisma.leadershipScheduleEntry.findMany({ where: { guildId: LEADERSHIP_GUILD_ID } }),
     prisma.passtimeScheduleEntry.findMany({ where: { guildId: PASSTIME_GUILD_ID } }),
