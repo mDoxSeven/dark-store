@@ -7,7 +7,45 @@ import {
   ALTA_RECRUITMENT_RANKS, ALTA_RECRUITMENT_RECORDS_CHANNEL_ID, ALTA_RECRUITMENT_ROLE_ID,
   ALTA_RECRUITMENT_VALIDATOR_IDS, altaRecruitmentCommand, altaRecruitmentReportCommand,
   altaRecruitmentResetCommand, buildAltaRecruitmentAnnouncement, buildAltaRecruitmentRecord,
+  recruitmentStaffAreas,
 } from '../src/alta/recruitment.ts';
+import { syncRecruitmentEmojis, recEmoji } from '../src/alta/recruitmentEmojis.ts';
+
+test('staff aceita várias áreas e rejeita valores desconhecidos ou duplicados', () => {
+  assert.deepEqual(recruitmentStaffAreas(['mov-chat', 'design']), ['Mov Chat', 'Design']);
+  for (const values of [[], ['admin'], ['design', 'design']]) assert.throws(() => recruitmentStaffAreas(values));
+});
+
+test('ficha distingue interesse, ausência de interesse e registros antigos', () => {
+  const base = { recruiterId: '1', targetId: '2', rankDisplay: 'Born', cameFromFamily: false, previousFamily: null };
+  const yes = JSON.stringify(buildAltaRecruitmentRecord({ ...base, staffInterest: true, staffAreas: ['Design', 'Eventos'], status: 'APPROVED', reviewerId: '3' }));
+  assert.match(yes, /Design, Eventos/);
+  assert.match(yes, /Validado/);
+  assert.match(yes, /<@3>/);
+  const no = JSON.stringify(buildAltaRecruitmentRecord({ ...base, staffInterest: false }));
+  assert.match(no, /interesse na staff\?\*\* Não/);
+  assert.doesNotMatch(no, /áreas de interesse/);
+  assert.match(JSON.stringify(buildAltaRecruitmentRecord(base)), /Não informado/);
+});
+
+test('emojis são criados uma vez na Liderança e reutilizados nas fichas', async () => {
+  const emojis = [];
+  let created = 0;
+  const guild = { emojis: {
+    fetch: async () => emojis,
+    create: async ({ name }) => {
+      const id = String(1000 + created++);
+      const emoji = { name, toString: () => `<:${name}:${id}>` };
+      emojis.push(emoji);
+      return emoji;
+    },
+  } };
+  const client = { guilds: { fetch: async id => { assert.equal(id, '1542871650473746454'); return guild; } } };
+  await syncRecruitmentEmojis(client);
+  await syncRecruitmentEmojis(client);
+  assert.equal(created, 6);
+  assert.match(recEmoji('clipboard'), /^<:alta_rec_chrome_clipboard:/);
+});
 
 test('/rec do Angel fica restrito ao servidor, canal e cargo de Recrutamento da Alta', () => {
   assert.equal(ALTA_GUILD_ID, '1309533710156169337');

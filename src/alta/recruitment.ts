@@ -7,6 +7,7 @@ import type { AltaRecruitment } from '@prisma/client';
 import { prisma } from '../lib/db.js';
 import { LEADERSHIP_AREAS, LEADERSHIP_GUILD_ID } from '../leadership/config.js';
 import { ALTA_GUILD_ID } from './rise.js';
+import { recEmoji, recButtonEmoji, syncRecruitmentEmojis } from './recruitmentEmojis.js';
 
 export const ALTA_RECRUITMENT_PREFIX = 'angel:rec:';
 export const ALTA_RECRUITMENT_CHANNEL_ID = '1514841820947939508';
@@ -103,10 +104,10 @@ export async function altaRecruitmentRankRoles(guild: Guild) {
   return result;
 }
 
-function selectRow(customId: string, placeholder: string, options: ApiComponent[]): ApiComponent {
+function selectRow(customId: string, placeholder: string, options: ApiComponent[], maxValues = 1): ApiComponent {
   return {
     type: 1,
-    components: [{ type: 3, custom_id: customId, placeholder, min_values: 1, max_values: 1, options }],
+    components: [{ type: 3, custom_id: customId, placeholder, min_values: 1, max_values: maxValues, options }],
   };
 }
 
@@ -148,6 +149,7 @@ export async function executeAltaRecruitmentCommand(interaction: ChatInputComman
   if (target.user.bot) throw new Error('Bots não podem ser registrados como recrutados.');
   if (target.id === interaction.user.id) throw new Error('Você não pode recrutar a si mesmo.');
 
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const ranks = await altaRecruitmentRankRoles(interaction.guild);
   const row = selectRow(
     `${ALTA_RECRUITMENT_PREFIX}rank:${interaction.user.id}:${target.id}`,
@@ -156,9 +158,9 @@ export async function executeAltaRecruitmentCommand(interaction: ChatInputComman
       label: rank.name, description: `Aplicar o cargo ${rank.role.name}`, value: rank.role.id, emoji: { name: rank.emoji },
     })),
   );
-  await interaction.reply(recruitmentV2(
+  await interaction.editReply(recruitmentV2(
     `# ♡ | NOVO RECRUTAMENTO\n**Recrutado:** <@${target.id}>\nEscolha o primeiro cargo da hierarquia que será aplicado.`,
-    { ephemeral: true, rows: [row] },
+    { rows: [row] },
   ) as any);
 }
 
@@ -186,41 +188,48 @@ export function buildAltaRecruitmentRecord(options: {
   cameFromFamily: boolean;
   previousFamily: string | null;
   avatarUrl?: string;
+  staffInterest?: boolean | null;
+  staffAreas?: string[];
   mirrored?: boolean;
   status?: string;
   reviewerId?: string | null;
 }) {
   const status = options.status ?? 'PENDING';
-  const statusText = status === 'APPROVED' ? '✅ Validado' : status === 'REJECTED' ? '❌ Recusado' : status === 'RESET' ? '🔄 Resetado' : '⏳ Aguardando validação';
+  const statusText = status === 'APPROVED' ? `${recEmoji('check')} Validado` : status === 'REJECTED' ? `${recEmoji('cross')} Recusado` : status === 'RESET' ? 'Resetado' : `${recEmoji('clock')} Aguardando validação`;
   const rows = status === 'PENDING' && options.recruitmentId ? [{
     type: 1,
     components: [
-      { type: 2, style: 3, custom_id: `${ALTA_RECRUITMENT_PREFIX}review:approve:${options.recruitmentId}`, label: 'Validar recrutamento', emoji: { name: '✅' } },
-      { type: 2, style: 4, custom_id: `${ALTA_RECRUITMENT_PREFIX}review:reject:${options.recruitmentId}`, label: 'Recusar recrutamento', emoji: { name: '❌' } },
+      { type: 2, style: 2, custom_id: `${ALTA_RECRUITMENT_PREFIX}review:approve:${options.recruitmentId}`, label: 'Validar recrutamento', emoji: recButtonEmoji('check') },
+      { type: 2, style: 2, custom_id: `${ALTA_RECRUITMENT_PREFIX}review:reject:${options.recruitmentId}`, label: 'Recusar recrutamento', emoji: recButtonEmoji('cross') },
     ],
   }] as ApiComponent[] : [];
   return recruitmentV2([
-    '# °♡° | FICHA DE RECRUTAMENTO',
-    '> Um novo integrante foi registrado pela equipe de Recrutamento da Alta.',
+    `# ${recEmoji('clipboard')} | FICHA DE RECRUTAMENTO`,
+    `${recEmoji('arrow')} Um novo integrante foi registrado pela equipe de Recrutamento da Alta.`,
     '',
-    `°♡° **recrutador:** <@${options.recruiterId}>`,
-    `°♡° **recrutado:** <@${options.targetId}>`,
-    `°♡° **id:** \`${options.targetId}\``,
-    `°♡° **cargo inicial:** ${options.rankDisplay}`,
-    `°♡° **saiu de alguma família?** ${options.cameFromFamily ? 'Sim' : 'Não'}`,
-    `°♡° **se sim, qual?** ${options.previousFamily ?? '—'}`,
-    `°♡° **status:** ${statusText}`,
-    ...(options.reviewerId ? [`°♡° **analisado por:** <@${options.reviewerId}>`] : []),
+    `${recEmoji('dot')} **recrutador:** <@${options.recruiterId}>`,
+    `${recEmoji('dot')} **recrutado:** <@${options.targetId}>`,
+    `${recEmoji('dot')} **id:** \`${options.targetId}\``,
+    `${recEmoji('dot')} **cargo inicial:** ${options.rankDisplay}`,
+    `${recEmoji('dot')} **saiu de alguma família?** ${options.cameFromFamily ? 'Sim' : 'Não'}`,
+    `${recEmoji('dot')} **se sim, qual?** ${options.previousFamily ?? '—'}`,
+    `${recEmoji('dot')} **interesse na staff?** ${options.staffInterest == null ? 'Não informado' : options.staffInterest ? 'Sim' : 'Não'}`,
+    ...(options.staffInterest ? [`${recEmoji('dot')} **áreas de interesse:** ${(options.staffAreas ?? []).join(', ') || 'Não informado'}`] : []),
+    `${recEmoji('dot')} **status:** ${statusText}`,
+    `${recEmoji('dot')} **analisado por:** ${options.reviewerId ? `<@${options.reviewerId}>` : '—'}`,
     ...(options.mirrored ? ['', '-# Registro espelhado automaticamente do servidor oficial da Alta.'] : []),
   ].join('\n'), {
     thumbnailUrl: options.avatarUrl,
     allowedUsers: options.mirrored ? [] : [options.targetId],
     rows,
-    accentColor: status === 'APPROVED' ? 0x57f287 : status === 'REJECTED' ? 0xed4245 : status === 'RESET' ? 0x89949f : ALTA_RECRUITMENT_ACCENT,
+    accentColor: 0xb9c0ca,
   });
 }
 
 async function mirrorRecruitmentToLeadership(client: Client, options: {
+  staffInterest: boolean | null;
+  staffAreas: string[];
+  reviewerId: string;
   recruiterId: string;
   target: GuildMember;
   rankName: string;
@@ -240,6 +249,9 @@ async function mirrorRecruitmentToLeadership(client: Client, options: {
     rankDisplay: options.rankName,
     cameFromFamily: options.cameFromFamily,
     previousFamily: options.previousFamily,
+    staffInterest: options.staffInterest,
+    staffAreas: options.staffAreas,
+    reviewerId: options.reviewerId,
     avatarUrl: options.target.displayAvatarURL({ extension: 'png', size: 256 }),
     mirrored: true,
     status: 'APPROVED',
@@ -253,13 +265,15 @@ async function finalizeRecruitment(
   rankRoleId: string,
   cameFromFamily: boolean,
   previousFamily: string | null,
+  staffInterest: boolean,
+  staffAreas: string[],
 ) {
   const ranks = await altaRecruitmentRankRoles(interaction.guild!);
   const selected = ranks.find(rank => rank.role.id === rankRoleId);
   if (!selected) throw new Error('O cargo selecionado não é um cargo inicial válido.');
   const records = await interaction.guild!.channels.fetch(ALTA_RECRUITMENT_RECORDS_CHANNEL_ID).catch(() => null);
   if (!records?.isSendable()) throw new Error('O canal de fichas de recrutamento não está disponível.');
-  await interaction.deferUpdate();
+  if (!interaction.deferred) await interaction.deferUpdate();
   const existing = await prisma.altaRecruitment.findFirst({
     where: { guildId: interaction.guildId!, targetId: target.id, active: true, status: { in: ['PENDING', 'APPROVED'] } },
   });
@@ -274,6 +288,7 @@ async function finalizeRecruitment(
   const recruitment = await prisma.altaRecruitment.create({ data: {
     guildId: interaction.guildId!, recruiterId: interaction.user.id, targetId: target.id,
     rankRoleId: selected.role.id, rankName: selected.name, cameFromFamily, previousFamily,
+    staffInterest, staffAreasJson: JSON.stringify(staffAreas),
     recordsChannelId: records.id,
   } });
   try {
@@ -284,6 +299,8 @@ async function finalizeRecruitment(
       rankDisplay: `<@&${selected.role.id}>`,
       cameFromFamily,
       previousFamily,
+      staffInterest,
+      staffAreas,
       avatarUrl: target.displayAvatarURL({ extension: 'png', size: 256 }),
       status: 'PENDING',
     }));
@@ -296,6 +313,20 @@ async function finalizeRecruitment(
     `# ⏳ | FICHA ENVIADA PARA VALIDAÇÃO\nA ficha de <@${target.id}> foi publicada em <#${ALTA_RECRUITMENT_RECORDS_CHANNEL_ID}>. O cargo <@&${selected.role.id}> será aplicado somente depois que um responsável validar o recrutamento.`,
   );
   await interaction.editReply({ components: done.components, allowedMentions: { parse: [] } });
+}
+
+export function recruitmentStaffAreas(values: string[]) {
+  if (!values.length || new Set(values).size !== values.length || values.some(value => !LEADERSHIP_AREAS.some(area => area.key === value))) {
+    throw new Error('Selecione áreas de staff válidas.');
+  }
+  return values.map(value => LEADERSHIP_AREAS.find(area => area.key === value)!.name);
+}
+
+async function askStaff(interaction: StringSelectMenuInteraction, targetId: string, rankRoleId: string, origin: string) {
+  const row = selectRow(`${ALTA_RECRUITMENT_PREFIX}staff:${interaction.user.id}:${targetId}:${rankRoleId}:${origin}`,
+    'A pessoa tem interesse na staff?', [{ label: 'Não', value: 'no' }, { label: 'Sim', value: 'yes' }]);
+  const payload = recruitmentV2(`# ♡ | INTERESSE NA STAFF\n**Recrutado:** <@${targetId}>\nA pessoa tem interesse em participar da staff?`, { rows: [row] });
+  await interaction.editReply({ components: payload.components, allowedMentions: { parse: [] } });
 }
 
 async function runRecruitmentSelect(interaction: StringSelectMenuInteraction) {
@@ -313,12 +344,12 @@ async function runRecruitmentSelect(interaction: StringSelectMenuInteraction) {
       ],
     );
     const payload = recruitmentV2(`# ♡ | FAMÍLIA ANTERIOR\n**Recrutado:** <@${parsed.target.id}>\n**Cargo selecionado:** <@&${rankRoleId}>\n\nO membro saiu de alguma família?`, { rows: [row] });
-    await interaction.update({ components: payload.components, allowedMentions: { parse: [] } });
+    await interaction.editReply({ components: payload.components, allowedMentions: { parse: [] } });
     return;
   }
   if (parsed.step === 'origin') {
     const answer = interaction.values[0];
-    if (answer === 'no') return finalizeRecruitment(interaction, parsed.target, parsed.rankRoleId, false, null);
+    if (answer === 'no') return askStaff(interaction, parsed.target.id, parsed.rankRoleId, 'none');
     if (answer !== 'yes') throw new Error('Resposta sobre a família anterior inválida.');
     const row = selectRow(
       `${ALTA_RECRUITMENT_PREFIX}family:${interaction.user.id}:${parsed.target.id}:${parsed.rankRoleId}`,
@@ -326,20 +357,37 @@ async function runRecruitmentSelect(interaction: StringSelectMenuInteraction) {
       ALTA_RECRUITMENT_FAMILIES.map(family => ({ label: family, value: family.toLocaleLowerCase('pt-BR') })),
     );
     const payload = recruitmentV2(`# ♡ | QUAL ERA A FAMÍLIA?\nSelecione a família anterior de <@${parsed.target.id}>.`, { rows: [row] });
-    await interaction.update({ components: payload.components, allowedMentions: { parse: [] } });
+    await interaction.editReply({ components: payload.components, allowedMentions: { parse: [] } });
     return;
   }
   if (parsed.step === 'family') {
     const value = interaction.values[0] ?? '';
     const family = ALTA_RECRUITMENT_FAMILIES.find(item => item.toLocaleLowerCase('pt-BR') === value);
     if (!family) throw new Error('Família anterior inválida.');
-    return finalizeRecruitment(interaction, parsed.target, parsed.rankRoleId, true, family);
+    return askStaff(interaction, parsed.target.id, parsed.rankRoleId, family.toLowerCase());
+  }
+  if (parsed.step === 'staff' || parsed.step === 'areas') {
+    const origin = interaction.customId.split(':')[6];
+    const family = ALTA_RECRUITMENT_FAMILIES.find(item => item.toLowerCase() === origin) ?? null;
+    if (origin !== 'none' && !family) throw new Error('Família anterior inválida.');
+    if (parsed.step === 'staff') {
+      if (interaction.values[0] === 'no') return finalizeRecruitment(interaction, parsed.target, parsed.rankRoleId, !!family, family, false, []);
+      if (interaction.values[0] !== 'yes') throw new Error('Resposta inválida.');
+      const row = selectRow(`${ALTA_RECRUITMENT_PREFIX}areas:${parsed.recruiterId}:${parsed.targetId}:${parsed.rankRoleId}:${origin}`,
+        'Selecione as áreas de interesse', LEADERSHIP_AREAS.map(area => ({ label: area.name, value: area.key })), LEADERSHIP_AREAS.length);
+      const payload = recruitmentV2('# ♡ | INTERESSE NA STAFF\nSelecione uma ou mais áreas. Isso registra interesse; não concede cargos de staff.', { rows: [row] });
+      await interaction.editReply({ components: payload.components, allowedMentions: { parse: [] } });
+      return;
+    }
+    const areas = recruitmentStaffAreas(interaction.values);
+    return finalizeRecruitment(interaction, parsed.target, parsed.rankRoleId, !!family, family, true, areas);
   }
   throw new Error('Etapa do recrutamento inválida.');
 }
 
 export async function handleAltaRecruitmentSelect(interaction: StringSelectMenuInteraction) {
   try {
+    await interaction.deferUpdate();
     await runRecruitmentSelect(interaction);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Não foi possível concluir o recrutamento.';
@@ -394,6 +442,8 @@ export async function handleAltaRecruitmentButton(interaction: ButtonInteraction
       rankDisplay: `<@&${record.rankRoleId}>`,
       cameFromFamily: record.cameFromFamily,
       previousFamily: record.previousFamily,
+      staffInterest: record.staffInterest,
+      staffAreas: JSON.parse(record.staffAreasJson),
       avatarUrl: target?.displayAvatarURL({ extension: 'png', size: 256 }),
       status,
       reviewerId: interaction.user.id,
@@ -408,6 +458,9 @@ export async function handleAltaRecruitmentButton(interaction: ButtonInteraction
         rankName: record.rankName,
         cameFromFamily: record.cameFromFamily,
         previousFamily: record.previousFamily,
+        staffInterest: record.staffInterest,
+        staffAreas: JSON.parse(record.staffAreasJson),
+        reviewerId: interaction.user.id,
       }).catch(error => {
         console.error(`espelho REC Liderança: ${error instanceof Error ? error.message : error}`);
         return false;
@@ -436,8 +489,9 @@ export function buildAltaRecruitmentAnnouncement() {
     `1. Use \`/rec\` no canal <#${ALTA_RECRUITMENT_CHANNEL_ID}> e escolha o membro recrutado.`,
     '2. Selecione **Born**, **Featured** ou **Purple**.',
     '3. Informe se ele veio de outra família e, quando necessário, escolha **Turquia**, **Nyx**, **Elite** ou **Dragons**.',
-    `4. A ficha será publicada em <#${ALTA_RECRUITMENT_RECORDS_CHANNEL_ID}> aguardando validação.`,
-    '5. O cargo só será aplicado depois que um responsável clicar em **Validar recrutamento**.',
+    '4. Informe se há interesse na staff. Se sim, selecione uma ou mais áreas: Mov Chat, Passtime, Design, Recrutamento e Eventos.',
+    `5. A ficha será publicada em <#${ALTA_RECRUITMENT_RECORDS_CHANNEL_ID}> aguardando validação.`,
+    '6. O cargo inicial só será aplicado após **Validar recrutamento**. Interesse na staff não concede cargos automaticamente.',
     '',
     '### Novos comandos',
     '• `/relatoriorec` — mostra os recrutamentos válidos de cada recrutador.',
@@ -448,6 +502,7 @@ export function buildAltaRecruitmentAnnouncement() {
 }
 
 export async function refreshAltaRecruitmentAnnouncement(client: Client) {
+  await syncRecruitmentEmojis(client).catch(error => console.error('Emojis REC Liderança:', error instanceof Error ? error.message : error));
   const guild = client.guilds.cache.get(ALTA_GUILD_ID) ?? await client.guilds.fetch(ALTA_GUILD_ID).catch(() => null);
   if (!guild) return false;
   const channel = await guild.channels.fetch(ALTA_RECRUITMENT_ANNOUNCEMENT_CHANNEL_ID).catch(() => null);
