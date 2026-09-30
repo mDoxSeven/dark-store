@@ -1,5 +1,6 @@
 import {
   PermissionFlagsBits,
+  SnowflakeUtil,
   type ButtonInteraction,
   type Client,
   type GuildMember,
@@ -10,6 +11,7 @@ import type { AltaMovChatConfig, AltaMovChatReport, AltaMovChatStat } from '@pri
 import { prisma } from '../lib/db.js';
 import {
   ALTA_MOV_CHAT_GUILD_ID,
+  ALTA_MOV_CHAT_CLEANUP_INTERVAL_MS,
   ALTA_MOV_CHAT_REPORT_CHANNEL_ID,
   ALTA_MOV_CHAT_REPORT_GUILD_ID,
   ALTA_MOV_CHAT_REPORT_HOUR,
@@ -21,6 +23,7 @@ import {
 } from './movChatConfig.js';
 import {
   movChatConfigMessage,
+  movChatCleanupMessage,
   movChatMemberMessage,
   movChatRankingMessage,
   movChatResetPrompt,
@@ -32,6 +35,8 @@ import {
 const mutationQueues = new Map<string, Promise<unknown>>();
 const reportLocks = new Set<string>();
 let reportTimerStarted = false;
+let cleanupTimerStarted = false;
+let cleanupSweepRunning = false;
 
 const errorText = (error: unknown) => error instanceof Error ? error.message : 'Ação não concluída.';
 const totalPoints = (item: Pick<AltaMovChatStat, 'chatPoints' | 'manualPoints'>) => item.chatPoints + item.manualPoints;
@@ -154,11 +159,33 @@ async function closeCycle(client: Client, trigger: 'AUTOMATIC' | 'MANUAL', trigg
       } });
       try {
         const ids = await deliverReport(client, report);
-        await prisma.$transaction([
-          prisma.altaMovChatReport.update({ where: { id: report.id }, data: { status: 'SENT', messageIdsJson: JSON.stringify(ids) } }),
-          prisma.altaMovChatStat.deleteMany({ where: { guildId } }),
-          prisma.altaMovChatConfig.update({ where: { guildId }, data: { cycleStartedAt: endedAt, lastReportAt: new Date() } }),
-        ]);
+        const trackedChannels = await prisma.altaMovChatChannel.findMany({ where: { guildId } });
+        await prisma.$transaction(async transaction => {
+          await transaction.altaMovChatReport.update({ where: { id: report.id }, data: { status: 'SENT', messageIdsJson: JSON.stringify(ids) } });
+          await transaction.altaMovChatStat.deleteMany({ where: { guildId } });
+          await transaction.altaMovChatConfig.update({ where: { guildId }, data: { cycleStartedAt: endedAt, lastReportAt: new Date() } });
+          for (const tracked of trackedChannels) {
+            const existing = await transaction.altaMovChatCleanup.findUnique({
+              where: { guildId_channelId: { guildId, channelId: tracked.channelId } },
+            });
+            const cleanup = await transaction.altaMovChatCleanup.upsert({
+              where: { guildId_channelId: { guildId, channelId: tracked.channelId } },
+              create: { guildId, channelId: tracked.channelId, cutoffAt: endedAt },
+              update: {
+                cutoffAt: endedAt,
+                scanBeforeId: null,
+                status: existing?.status === 'PAUSED' ? 'PAUSED' : 'PENDING',
+                deletedCount: 0,
+                skippedPinnedCount: 0,
+                skippedOtherCount: 0,
+                completedAt: null,
+                lastError: null,
+                nextAttemptAt: null,
+              },
+            });
+            await transaction.altaMovChatCleanupItem.deleteMany({ where: { cleanupId: cleanup.id } });
+          }
+        });
         return { report: { ...report, status: 'SENT', messageIdsJson: JSON.stringify(ids) }, delivered: true, messageIds: ids };
       } catch (error) {
         console.error(`relatório Mov Chat ${report.id} não validado; ciclo preservado: ${errorText(error)}`);
@@ -203,6 +230,169 @@ export function startAltaMovChatReports(client: Client) {
   reportTimerStarted = true;
   void sweepAltaMovChatReports(client).catch(error => console.error(`agendador Mov Chat: ${errorText(error)}`));
   setInterval(() => void sweepAltaMovChatReports(client).catch(error => console.error(`agendador Mov Chat: ${errorText(error)}`)), 60_000).unref();
+}
+
+export async function sweepAltaMovChatCleanup(client: Client) {
+  if (cleanupSweepRunning) return false;
+  cleanupSweepRunning = true;
+  try {
+    const now = new Date();
+    const job = await prisma.altaMovChatCleanup.findFirst({
+      where: {
+        guildId: ALTA_MOV_CHAT_GUILD_ID,
+        status: { in: ['PENDING', 'SCANNING', 'RUNNING', 'ERROR'] },
+        OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }],
+      },
+      orderBy: [{ updatedAt: 'asc' }, { channelId: 'asc' }],
+    });
+    if (!job) return false;
+    if (job.status === 'PENDING') {
+      const scanBeforeId = SnowflakeUtil.generate({
+        timestamp: job.cutoffAt,
+        increment: 4095n,
+        workerId: 31n,
+        processId: 31n,
+      }).toString();
+      await prisma.$transaction(async transaction => {
+        await transaction.altaMovChatCleanupItem.deleteMany({ where: { cleanupId: job.id } });
+        const started = await transaction.altaMovChatCleanup.updateMany({
+          where: { id: job.id, status: 'PENDING' },
+          data: {
+            status: 'SCANNING', scanBeforeId, deletedCount: 0, skippedPinnedCount: 0, skippedOtherCount: 0,
+            completedAt: null, lastError: null, nextAttemptAt: null,
+          },
+        });
+        if (!started.count) throw new Error('A limpeza foi pausada antes do mapeamento.');
+      });
+      return true;
+    }
+
+    const channel = await client.channels.fetch(job.channelId).catch(() => null);
+    if (!channel?.isTextBased() || !('messages' in channel)) {
+      await prisma.altaMovChatCleanup.updateMany({
+        where: { id: job.id, status: job.status },
+        data: { status: 'ERROR', lastError: 'Canal indisponível ou sem histórico acessível.', nextAttemptAt: new Date(Date.now() + 5 * 60_000) },
+      });
+      return false;
+    }
+
+    const phase = job.status === 'ERROR' ? (job.scanBeforeId ? 'SCANNING' : 'RUNNING') : job.status;
+    const claimed = await prisma.altaMovChatCleanup.updateMany({
+      where: { id: job.id, status: job.status },
+      data: { status: phase, lastError: null, nextAttemptAt: null },
+    });
+    if (!claimed.count) return false;
+
+    if (phase === 'SCANNING') {
+      if (!job.scanBeforeId) throw new Error('Cursor do mapeamento da limpeza não encontrado.');
+      let fetched;
+      try {
+        fetched = await channel.messages.fetch({ limit: 100, before: job.scanBeforeId, cache: false });
+      } catch (error) {
+        await prisma.altaMovChatCleanup.updateMany({
+          where: { id: job.id, status: 'SCANNING' },
+          data: { status: 'ERROR', lastError: errorText(error).slice(0, 300), nextAttemptAt: new Date(Date.now() + 5 * 60_000) },
+        });
+        return false;
+      }
+      const messages = [...fetched.values()].sort((a, b) => a.createdTimestamp - b.createdTimestamp);
+      const oldest = messages[0];
+      const queued = messages.filter(item => !item.pinned && item.deletable);
+      const skippedPinned = messages.filter(item => item.pinned).length;
+      const skippedOther = messages.length - queued.length - skippedPinned;
+      await prisma.$transaction(async transaction => {
+        if (queued.length) {
+          await transaction.altaMovChatCleanupItem.createMany({
+            data: queued.map(item => ({ messageId: item.id, cleanupId: job.id, createdAt: item.createdAt })),
+          });
+        }
+        const finishedScanning = fetched.size < 100 || !oldest;
+        const remaining = finishedScanning
+          ? await transaction.altaMovChatCleanupItem.count({ where: { cleanupId: job.id } })
+          : 1;
+        const advanced = await transaction.altaMovChatCleanup.updateMany({
+          where: { id: job.id, status: 'SCANNING' },
+          data: {
+            scanBeforeId: finishedScanning ? null : oldest.id,
+            status: finishedScanning ? (remaining ? 'RUNNING' : 'COMPLETED') : 'SCANNING',
+            skippedPinnedCount: { increment: skippedPinned },
+            skippedOtherCount: { increment: skippedOther },
+            completedAt: finishedScanning && !remaining ? new Date() : null,
+          },
+        });
+        if (!advanced.count) throw new Error('A limpeza foi pausada durante o mapeamento.');
+      });
+      return true;
+    }
+
+    const item = await prisma.altaMovChatCleanupItem.findFirst({
+      where: { cleanupId: job.id },
+      orderBy: [{ createdAt: 'asc' }, { messageId: 'asc' }],
+    });
+    if (!item) {
+      await prisma.altaMovChatCleanup.updateMany({
+        where: { id: job.id, status: 'RUNNING' },
+        data: { status: 'COMPLETED', completedAt: new Date(), lastError: null, nextAttemptAt: null },
+      });
+      return true;
+    }
+
+    let target: Message;
+    try {
+      target = await channel.messages.fetch(item.messageId);
+    } catch (error) {
+      if ((error as { code?: number }).code === 10008) {
+        await finishCleanupItem(job.id, item.messageId, 'skippedOtherCount');
+        return true;
+      }
+      await prisma.altaMovChatCleanup.updateMany({
+        where: { id: job.id, status: 'RUNNING' },
+        data: { status: 'ERROR', lastError: errorText(error).slice(0, 300), nextAttemptAt: new Date(Date.now() + 5 * 60_000) },
+      });
+      return false;
+    }
+    if (target.pinned || !target.deletable) {
+      await finishCleanupItem(job.id, item.messageId, target.pinned ? 'skippedPinnedCount' : 'skippedOtherCount');
+      return true;
+    }
+    try {
+      await target.delete();
+      await finishCleanupItem(job.id, item.messageId, 'deletedCount');
+    } catch (error) {
+      await prisma.altaMovChatCleanup.updateMany({
+        where: { id: job.id, status: 'RUNNING' },
+        data: { status: 'ERROR', lastError: errorText(error).slice(0, 300), nextAttemptAt: new Date(Date.now() + 5 * 60_000) },
+      });
+    }
+    return true;
+  } finally {
+    cleanupSweepRunning = false;
+  }
+}
+
+async function finishCleanupItem(
+  cleanupId: string,
+  messageId: string,
+  counter: 'deletedCount' | 'skippedPinnedCount' | 'skippedOtherCount',
+) {
+  await prisma.$transaction(async transaction => {
+    await transaction.altaMovChatCleanupItem.delete({ where: { messageId } });
+    await transaction.altaMovChatCleanup.update({ where: { id: cleanupId }, data: { [counter]: { increment: 1 } } });
+    const remaining = await transaction.altaMovChatCleanupItem.count({ where: { cleanupId } });
+    if (!remaining) {
+      await transaction.altaMovChatCleanup.updateMany({
+        where: { id: cleanupId, status: 'RUNNING' },
+        data: { status: 'COMPLETED', completedAt: new Date(), lastError: null, nextAttemptAt: null },
+      });
+    }
+  });
+}
+
+export function startAltaMovChatCleanup(client: Client) {
+  if (cleanupTimerStarted) return;
+  cleanupTimerStarted = true;
+  void sweepAltaMovChatCleanup(client).catch(error => console.error(`limpeza Mov Chat: ${errorText(error)}`));
+  setInterval(() => void sweepAltaMovChatCleanup(client).catch(error => console.error(`limpeza Mov Chat: ${errorText(error)}`)), ALTA_MOV_CHAT_CLEANUP_INTERVAL_MS).unref();
 }
 
 async function showConfig(message: Message<true>, config: AltaMovChatConfig) {
@@ -301,6 +491,25 @@ async function requestReset(message: Message<true>) {
   await message.channel.send(movChatResetPrompt(message.author.id, config.cycleStartedAt));
 }
 
+async function cleanupControl(message: Message<true>) {
+  const config = await configFor(message.guildId);
+  await assertManager(message, config);
+  const action = message.content.trim().split(/\s+/)[1]?.toLocaleLowerCase('pt-BR') ?? '';
+  if (action === 'pausar') {
+    await prisma.altaMovChatCleanup.updateMany({
+      where: { guildId: message.guildId, status: { in: ['PENDING', 'SCANNING', 'RUNNING', 'ERROR'] } },
+      data: { status: 'PAUSED', nextAttemptAt: null },
+    });
+  } else if (action === 'retomar') {
+    await prisma.altaMovChatCleanup.updateMany({
+      where: { guildId: message.guildId, status: { in: ['PAUSED', 'ERROR'] } },
+      data: { status: 'PENDING', lastError: null, nextAttemptAt: null },
+    });
+  } else if (action) throw new Error('Use `!limpeza_chat`, `!limpeza_chat pausar` ou `!limpeza_chat retomar`.');
+  const jobs = await prisma.altaMovChatCleanup.findMany({ where: { guildId: message.guildId }, orderBy: { createdAt: 'asc' } });
+  await message.channel.send(movChatCleanupMessage(jobs));
+}
+
 export async function handleAltaMovChatCommand(message: Message) {
   if (!isAltaMovChatCommand(message.content) || !message.inGuild() || message.guildId !== ALTA_MOV_CHAT_GUILD_ID) return false;
   try {
@@ -311,6 +520,7 @@ export async function handleAltaMovChatCommand(message: Message) {
     else if (command === '!dar_pontos') await adjustPoints(message, 1);
     else if (command === '!remover_pontos') await adjustPoints(message, -1);
     else if (command === '!resetar_chat' || command === '!resetar_rank') await requestReset(message);
+    else if (command === '!limpeza_chat') await cleanupControl(message);
   } catch (error) {
     await message.reply({ content: errorText(error), allowedMentions: { repliedUser: false } }).catch(() => null);
   }

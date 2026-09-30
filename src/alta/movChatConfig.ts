@@ -8,9 +8,10 @@ export const ALTA_MOV_CHAT_REPORT_WEEKDAY = 6;
 export const ALTA_MOV_CHAT_REPORT_HOUR = 16;
 export const ALTA_MOV_CHAT_REPORT_MINUTE = 0;
 export const ALTA_MOV_CHAT_RESET_PREFIX = 'movchat:reset:';
+export const ALTA_MOV_CHAT_CLEANUP_INTERVAL_MS = 2_000;
 
 export const ALTA_MOV_CHAT_COMMANDS = new Set([
-  '!config_chat', '!chat', '!mensagens', '!dar_pontos', '!remover_pontos', '!resetar_chat', '!resetar_rank',
+  '!config_chat', '!chat', '!mensagens', '!dar_pontos', '!remover_pontos', '!resetar_chat', '!resetar_rank', '!limpeza_chat',
 ]);
 
 export const movChatCommandName = (content: string) => content.trim().split(/\s+/, 1)[0]?.toLocaleLowerCase('pt-BR') ?? '';

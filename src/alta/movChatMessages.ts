@@ -44,6 +44,7 @@ export function movChatConfigMessage(config: {
     '`!config_chat remover #canal`',
     '`!config_chat cargo @cargo`',
     '`!config_chat cooldown 10`',
+    '`!limpeza_chat` — acompanhar, pausar ou retomar a limpeza semanal',
   ].join('\n'), { footer: 'Alta Cúpula • Mov Chat • configuração segura' });
 }
 
@@ -54,6 +55,33 @@ export type MovChatRankingItem = {
   chatPoints: number;
   manualPoints: number;
 };
+
+export function movChatCleanupMessage(jobs: Array<{
+  channelId: string;
+  status: string;
+  deletedCount: number;
+  skippedPinnedCount: number;
+  skippedOtherCount: number;
+  cutoffAt: Date;
+  lastError: string | null;
+}>) {
+  const status: Record<string, string> = {
+    PENDING: '🕒 aguardando', SCANNING: '🗂️ mapeando histórico', RUNNING: '🧹 limpando', PAUSED: '⏸️ pausada', ERROR: '⚠️ aguardando nova tentativa', COMPLETED: '✅ concluída',
+  };
+  const lines = jobs.map(job => [
+    `**<#${job.channelId}> — ${status[job.status] ?? job.status}**`,
+    `└ apagadas: **${job.deletedCount}** • fixadas preservadas: **${job.skippedPinnedCount}** • outras preservadas: **${job.skippedOtherCount}**`,
+    `└ limite: <t:${Math.floor(job.cutoffAt.getTime() / 1000)}:f>${job.lastError ? ` • último erro: ${job.lastError.slice(0, 120)}` : ''}`,
+  ].join('\n'));
+  return movChatV2([
+    '# 🧹 | LIMPEZA SEGURA — MOV CHAT',
+    '*Uma mensagem antiga é removida a cada 2 segundos. Fixadas e mensagens do novo ciclo são preservadas.*',
+    '',
+    lines.join('\n\n') || '*Nenhuma limpeza foi agendada. A primeira começará depois de um relatório validado.*',
+    '',
+    '`!limpeza_chat pausar` • `!limpeza_chat retomar`',
+  ].join('\n'), { footer: 'Alta Cúpula • Mov Chat • limpeza incremental' });
+}
 
 const totalPoints = (item: MovChatRankingItem) => item.chatPoints + item.manualPoints;
 

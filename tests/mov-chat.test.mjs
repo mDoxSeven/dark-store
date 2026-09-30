@@ -11,6 +11,7 @@ import {
 import { currentBrazilReportBoundary } from '../src/alta/movChat.ts';
 import {
   movChatConfigMessage,
+  movChatCleanupMessage,
   movChatMemberMessage,
   movChatResetPrompt,
   movChatWeeklyReportMessage,
@@ -20,7 +21,7 @@ test('Mov Chat usa os servidores e canal informados e mantém os comandos atuais
   assert.equal(ALTA_MOV_CHAT_GUILD_ID, '1309533710156169337');
   assert.equal(ALTA_MOV_CHAT_REPORT_GUILD_ID, '1542871650473746454');
   assert.equal(ALTA_MOV_CHAT_REPORT_CHANNEL_ID, '1554586776939794532');
-  for (const command of ['!config_chat', '!chat', '!mensagens', '!dar_pontos', '!remover_pontos', '!resetar_chat', '!resetar_rank']) {
+  for (const command of ['!config_chat', '!chat', '!mensagens', '!dar_pontos', '!remover_pontos', '!resetar_chat', '!resetar_rank', '!limpeza_chat']) {
     assert.equal(ALTA_MOV_CHAT_COMMANDS.has(command), true);
     assert.equal(isAltaMovChatCommand(`${command} teste`), true);
   }
@@ -42,6 +43,7 @@ test('painéis V2 mostram configuração, desempenho e confirmação unificada',
   assert.match(config, /2 ponto\(s\)/);
   assert.match(config, /sábado/);
   assert.match(config, /16:00/);
+  assert.match(config, /limpeza_chat/);
 
   const member = JSON.stringify(movChatMemberMessage({
     userId: '30', messageCount: 20, scoredMessageCount: 10, chatPoints: 20, manualPoints: -2,
@@ -52,6 +54,14 @@ test('painéis V2 mostram configuração, desempenho e confirmação unificada',
   const reset = JSON.stringify(movChatResetPrompt('40', new Date('2026-09-28T03:05:00.000Z')));
   assert.match(reset, /só serão reiniciados depois que o Discord confirmar/);
   assert.match(reset, /movchat:reset:40:/);
+
+  const cleanup = JSON.stringify(movChatCleanupMessage([{
+    channelId: '20', status: 'RUNNING', deletedCount: 12, skippedPinnedCount: 2, skippedOtherCount: 1,
+    cutoffAt: new Date('2026-10-03T19:00:00.000Z'), lastError: null,
+  }]));
+  assert.match(cleanup, /LIMPEZA SEGURA — MOV CHAT/);
+  assert.match(cleanup, /uma mensagem antiga.*cada 2 segundos/i);
+  assert.match(cleanup, /fixadas preservadas/);
 });
 
 test('relatório semanal lista métricas individuais e usa Components V2', () => {
@@ -78,8 +88,15 @@ test('Angel registra mensagens, comandos, botões e agendador do Mov Chat', asyn
   assert.match(bot, /trackAltaMovChatMessage\(message\)/);
   assert.match(bot, /handleAltaMovChatButton\(interaction\)/);
   assert.match(bot, /startAltaMovChatReports\(connected\)/);
+  assert.match(bot, /startAltaMovChatCleanup\(connected\)/);
+  const module = await readFile(new URL('../src/alta/movChat.ts', import.meta.url), 'utf8');
+  assert.match(module, /item => !item\.pinned && item\.deletable/);
+  assert.match(module, /SnowflakeUtil\.generate/);
+  assert.match(module, /before: job\.scanBeforeId/);
+  assert.match(module, /orderBy: \[\{ createdAt: 'asc' \}/);
+  assert.match(module, /ALTA_MOV_CHAT_CLEANUP_INTERVAL_MS/);
   const schema = await readFile(new URL('../prisma/schema.prisma', import.meta.url), 'utf8');
-  for (const model of ['AltaMovChatConfig', 'AltaMovChatChannel', 'AltaMovChatStat', 'AltaMovChatAdjustment', 'AltaMovChatReport']) {
+  for (const model of ['AltaMovChatConfig', 'AltaMovChatChannel', 'AltaMovChatStat', 'AltaMovChatAdjustment', 'AltaMovChatReport', 'AltaMovChatCleanup', 'AltaMovChatCleanupItem']) {
     assert.match(schema, new RegExp(`model ${model}`));
   }
   assert.match(schema, /entriesJson\s+String/);

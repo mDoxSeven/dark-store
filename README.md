@@ -71,6 +71,8 @@ No servidor oficial da Alta (`1309533710156169337`), um administrador inicia o m
 
 Todo sábado às `16:00`, no horário de Brasília, o Angel publica o relatório completo no canal `1554586776939794532` do servidor de Liderança (`1542871650473746454`). O relatório contém mensagens totais, mensagens pontuadas, pontos automáticos, ajustes da gestão e total individual. Mensagens e pontos só são reiniciados depois que o Discord confirma o envio de todas as páginas; se a entrega falhar, o ciclo permanece intacto e o Angel tenta novamente.
 
+Depois da confirmação do relatório, uma limpeza incremental começa nos canais monitorados. O Angel remove somente mensagens anteriores ao fechamento, da mais antiga para a mais nova, no ritmo de uma mensagem a cada dois segundos. Mensagens fixadas e mensagens do novo ciclo são preservadas; o progresso fica salvo para continuar após reinícios. A gestão consulta com `!limpeza_chat`, pausa com `!limpeza_chat pausar` e continua com `!limpeza_chat retomar`.
+
 ## Recrutamento da Alta
 
 O Angel registra `/rec` somente no servidor oficial da Alta. Membros com o cargo de Recrutamento `1417338258815193219` usam `/rec recrutado:@membro` no canal `1514841820947939508`, selecionam **Born**, **Featured** ou **Purple** e informam se o recrutado veio de **Turquia**, **Nyx**, **Elite** ou **Dragons**. A ficha Components V2 com avatar é publicada em `1514841659194736650` aguardando validação; o cargo inicial só é aplicado depois da aprovação.

@@ -544,3 +544,33 @@ model AltaMovChatReport {
 
   @@index([guildId, cycleEndedAt])
 }
+
+model AltaMovChatCleanup {
+  id                 String    @id @default(cuid())
+  guildId            String
+  channelId          String
+  cutoffAt           DateTime
+  scanBeforeId       String?
+  status             String    @default("PENDING")
+  deletedCount       Int       @default(0)
+  skippedPinnedCount Int       @default(0)
+  skippedOtherCount  Int       @default(0)
+  lastError          String?
+  nextAttemptAt      DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  completedAt        DateTime?
+  items              AltaMovChatCleanupItem[]
+
+  @@unique([guildId, channelId])
+  @@index([guildId, status, nextAttemptAt])
+}
+
+model AltaMovChatCleanupItem {
+  messageId String   @id
+  cleanupId String
+  createdAt DateTime
+  cleanup   AltaMovChatCleanup @relation(fields: [cleanupId], references: [id], onDelete: Cascade)
+
+  @@index([cleanupId, createdAt, messageId])
+}
