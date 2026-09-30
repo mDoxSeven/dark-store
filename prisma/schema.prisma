@@ -455,6 +455,32 @@ model AltaRecruitment {
   @@index([guildId, status, createdAt])
 }
 
+model AltaSuggestionConfig {
+  guildId String @id
+  reviewChannelId String?
+  panelMessageId String?
+}
+
+model AltaSuggestionDraft {
+  userId String @id
+  category String
+  expiresAt DateTime
+}
+
+model AltaSuggestion {
+  id String @id @default(cuid())
+  authorId String
+  category String
+  body String
+  sourceMessageId String @unique
+  reviewMessageId String? @unique
+  publicMessageId String? @unique
+  status String @default("PENDING")
+  reviewerId String?
+  createdAt DateTime @default(now())
+  @@index([status])
+}
+
 model SpotifyOAuthState {
   stateHash     String   @id
   discordUserId String

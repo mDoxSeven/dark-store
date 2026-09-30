@@ -30,6 +30,7 @@ import { handleVortexSupportButton, handleVortexSupportCommand, handleVortexSupp
 import { VORTEX_SUPPORT_SELECT_ID } from '../vortex/supportMessages.js';
 import { ALTA_GUILD_ID, altaRiseCommand, executeAltaRiseCommand, handleAltaRiseCommand } from '../alta/rise.js';
 import { handleAltaListeningCommand, rememberAltaSpotifyPresence, rememberRawAltaSpotifyPresence } from '../alta/listening.js';
+import { startAltaSuggestions, selectSuggestion, collectSuggestion, reviewSuggestion } from '../alta/suggestions.js';
 import {
   applyAltaMovChatPolicy, handleAltaMovChatButton, handleAltaMovChatCommand,
   startAltaMovChatCleanup, startAltaMovChatReports, trackAltaMovChatMessage,
@@ -356,7 +357,9 @@ export async function startDiscord(token: string) {
   };
   client.on(Events.InteractionCreate, interaction => {
     void (async () => {
-      if (interaction.isButton() && interaction.customId.startsWith('passtime:')) await handlePasstimeButton(interaction);
+      if (interaction.isStringSelectMenu() && interaction.customId === 'alta:suggestion:category') await selectSuggestion(interaction);
+      else if (interaction.isButton() && interaction.customId.startsWith('alta:suggestion:')) await reviewSuggestion(interaction);
+      else if (interaction.isButton() && interaction.customId.startsWith('passtime:')) await handlePasstimeButton(interaction);
       else if (interaction.isModalSubmit() && interaction.customId.startsWith('passtime:')) await handlePasstimeModal(interaction);
       else if (interaction.isStringSelectMenu() && interaction.customId.startsWith('passtime:schedule:')) await handlePasstimeSelect(interaction);
       else if (interaction.isButton() && interaction.customId.startsWith('leadership:')) await handleLeadershipButton(interaction);
@@ -393,6 +396,7 @@ export async function startDiscord(token: string) {
   client.on(Events.MessageCreate, message => {
     if (message.author.bot || !message.inGuild()) return;
     void (async () => {
+      if (await collectSuggestion(message)) return;
       if (await handleAltaMovChatCommand(message)) return;
       if (await handlePasstimeCommand(message)) return;
       if (await handleLeadershipCommand(message)) return;
@@ -449,6 +453,7 @@ export async function startDiscord(token: string) {
         await guild.commands.set([criarCommand.toJSON()]);
         const altaGuild = await connected.guilds.fetch(ALTA_GUILD_ID).catch(() => null);
         if (altaGuild) {
+          void startAltaSuggestions(connected).catch(error => console.error(`Sugestões Alta: ${errorText(error)}`));
           await altaGuild.commands.set([
             altaRiseCommand.toJSON(), altaRecruitmentCommand.toJSON(),
             altaRecruitmentReportCommand.toJSON(), altaRecruitmentResetCommand.toJSON(),

@@ -73,6 +73,14 @@ Todo sábado às `16:00`, no horário de Brasília, o Angel publica o relatório
 
 Depois da confirmação do relatório, uma limpeza incremental começa nos canais monitorados. O Angel remove somente mensagens anteriores ao fechamento, da mais antiga para a mais nova, no ritmo de uma mensagem a cada dois segundos. Mensagens fixadas e mensagens do novo ciclo são preservadas; o progresso fica salvo para continuar após reinícios. A gestão consulta com `!limpeza_chat`, pausa com `!limpeza_chat pausar` e continua com `!limpeza_chat retomar`.
 
+## Sugestões da Alta
+
+O Angel publica/atualiza o painel V2 no canal `1553375936970490026` e cria `analise-sugestoes-alta`, privado para os cargos `1375095425324814476`, `1428094473904193628`, `1428093853453389925` e `1464375014903255182`. Administradores do Discord continuam podendo visualizar canais privados; os botões exigem um dos quatro cargos mesmo assim.
+
+O membro escolhe Família, Servidor interno, Ideias e eventos, Melhorias no bot ou Outros. Tem dez minutos para escrever uma mensagem de 10 a 1500 caracteres no mesmo canal; `cancelar` encerra o rascunho. Texto sem anexos, até três sugestões pendentes. Após envio à análise, o bot remove a mensagem original; até esse momento ela permanece visível no chat. Somente sugestões aprovadas são publicadas como fichas V2 compactas com categoria, texto e autor. O resultado é enviado por DM quando possível. Dados e rascunhos são persistentes.
+
+O bot requer Gerenciar canais, Gerenciar mensagens, Ver canal, Enviar mensagens e Ler histórico. Cria onze emojis cromados na própria Alta (permissão Criar expressões e vagas disponíveis). Os assets estão em `public/suggestion-emojis`. Falhas de publicação ficam registradas para conferência da equipe, sem reenvio automático que possa duplicar a sugestão.
+
 ## Recrutamento da Alta
 
 Após a família anterior, `/rec` pergunta se o recrutado tem interesse na staff. “Não” publica a ficha; “Sim” permite escolher várias áreas (Mov Chat, Passtime, Design, Recrutamento e Eventos). O interesse é salvo na ficha e no espelho da Liderança, sem conceder cargos de staff. Fichas antigas exibem “Não informado”.
