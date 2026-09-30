@@ -31,7 +31,8 @@ import { VORTEX_SUPPORT_SELECT_ID } from '../vortex/supportMessages.js';
 import { ALTA_GUILD_ID, altaRiseCommand, executeAltaRiseCommand, handleAltaRiseCommand } from '../alta/rise.js';
 import { handleAltaListeningCommand, rememberAltaSpotifyPresence, rememberRawAltaSpotifyPresence } from '../alta/listening.js';
 import {
-  handleAltaMovChatButton, handleAltaMovChatCommand, startAltaMovChatCleanup, startAltaMovChatReports, trackAltaMovChatMessage,
+  applyAltaMovChatPolicy, handleAltaMovChatButton, handleAltaMovChatCommand,
+  startAltaMovChatCleanup, startAltaMovChatReports, trackAltaMovChatMessage,
 } from '../alta/movChat.js';
 import {
   ALTA_RECRUITMENT_PREFIX, altaRecruitmentCommand, altaRecruitmentReportCommand, altaRecruitmentResetCommand,
@@ -456,6 +457,8 @@ export async function startDiscord(token: string) {
             .catch(error => console.error(`Comandos da Alta não registrados no servidor ${ALTA_GUILD_ID}: ${errorText(error)}`));
           await refreshAltaRecruitmentAnnouncement(connected)
             .catch(error => console.error(`Aviso REC da Alta não publicado: ${errorText(error)}`));
+          await applyAltaMovChatPolicy()
+            .catch(error => console.error(`Política do Mov Chat não aplicada: ${errorText(error)}`));
           startAltaMovChatCleanup(connected);
         } else {
           console.warn(`Angel sem acesso ao servidor ${ALTA_GUILD_ID}; comandos da Alta indisponíveis nele.`);

@@ -1,5 +1,4 @@
 import {
-  PermissionFlagsBits,
   SnowflakeUtil,
   type ButtonInteraction,
   type Client,
@@ -12,6 +11,7 @@ import { prisma } from '../lib/db.js';
 import {
   ALTA_MOV_CHAT_GUILD_ID,
   ALTA_MOV_CHAT_CLEANUP_INTERVAL_MS,
+  ALTA_MOV_CHAT_LEADER_ROLE_ID,
   ALTA_MOV_CHAT_REPORT_CHANNEL_ID,
   ALTA_MOV_CHAT_REPORT_GUILD_ID,
   ALTA_MOV_CHAT_REPORT_HOUR,
@@ -25,7 +25,6 @@ import {
   movChatConfigMessage,
   movChatCleanupMessage,
   movChatMemberMessage,
-  movChatRankingMessage,
   movChatResetPrompt,
   movChatV2,
   movChatWeeklyReportMessage,
@@ -61,17 +60,40 @@ async function configFor(guildId = ALTA_MOV_CHAT_GUILD_ID) {
     where: { guildId },
     create: {
       guildId,
+      managerRoleId: ALTA_MOV_CHAT_LEADER_ROLE_ID,
       reportGuildId: ALTA_MOV_CHAT_REPORT_GUILD_ID,
       reportChannelId: ALTA_MOV_CHAT_REPORT_CHANNEL_ID,
     },
-    update: {},
+    update: { managerRoleId: ALTA_MOV_CHAT_LEADER_ROLE_ID },
   });
 }
 
 async function managerAccess(member: GuildMember, config?: AltaMovChatConfig | null) {
-  if (member.id === member.guild.ownerId || member.permissions.has(PermissionFlagsBits.Administrator)) return true;
-  const current = config ?? await prisma.altaMovChatConfig.findUnique({ where: { guildId: member.guild.id } });
-  return Boolean(current?.managerRoleId && member.roles.cache.has(current.managerRoleId));
+  void config;
+  return member.roles.cache.has(ALTA_MOV_CHAT_LEADER_ROLE_ID);
+}
+
+export async function applyAltaMovChatPolicy() {
+  await prisma.$transaction([
+    prisma.altaMovChatConfig.upsert({
+      where: { guildId: ALTA_MOV_CHAT_GUILD_ID },
+      create: {
+        guildId: ALTA_MOV_CHAT_GUILD_ID,
+        managerRoleId: ALTA_MOV_CHAT_LEADER_ROLE_ID,
+        reportGuildId: ALTA_MOV_CHAT_REPORT_GUILD_ID,
+        reportChannelId: ALTA_MOV_CHAT_REPORT_CHANNEL_ID,
+      },
+      update: { managerRoleId: ALTA_MOV_CHAT_LEADER_ROLE_ID },
+    }),
+    prisma.altaMovChatChannel.updateMany({
+      where: { guildId: ALTA_MOV_CHAT_GUILD_ID, pointsPerMessage: { not: 0 } },
+      data: { pointsPerMessage: 0 },
+    }),
+    prisma.altaMovChatStat.updateMany({
+      where: { guildId: ALTA_MOV_CHAT_GUILD_ID },
+      data: { scoredMessageCount: 0, chatPoints: 0, lastScoredAt: null },
+    }),
+  ]);
 }
 
 async function assertManager(message: Message<true>, config?: AltaMovChatConfig | null) {
@@ -410,44 +432,31 @@ async function configure(message: Message<true>) {
   if (message.mentions.channels.first() && !['adicionar', 'remover'].includes(action)) action = 'adicionar';
   if (action === 'adicionar') {
     const channel = message.mentions.channels.first();
-    if (!channel || !('guildId' in channel) || channel.guildId !== message.guildId || !channel.isTextBased() || channel.isThread()) throw new Error('Use `!config_chat adicionar #canal 1`.');
-    const mentionIndex = args.findIndex(value => value.includes(channel.id));
-    const points = Number(args[mentionIndex + 1] ?? '1');
-    if (!Number.isInteger(points) || points < 0 || points > 100) throw new Error('Os pontos por mensagem devem ser um número entre 0 e 100.');
+    if (!channel || !('guildId' in channel) || channel.guildId !== message.guildId || !channel.isTextBased() || channel.isThread()) throw new Error('Use `!config_chat adicionar #canal`.');
     await prisma.altaMovChatChannel.upsert({
       where: { guildId_channelId: { guildId: message.guildId, channelId: channel.id } },
-      create: { guildId: message.guildId, channelId: channel.id, pointsPerMessage: points },
-      update: { pointsPerMessage: points },
+      create: { guildId: message.guildId, channelId: channel.id, pointsPerMessage: 0 },
+      update: { pointsPerMessage: 0 },
     });
   } else if (action === 'remover') {
     const channel = message.mentions.channels.first();
     if (!channel) throw new Error('Use `!config_chat remover #canal`.');
     await prisma.altaMovChatChannel.deleteMany({ where: { guildId: message.guildId, channelId: channel.id } });
-  } else if (action === 'cargo') {
-    const role = message.mentions.roles.first();
-    if (!role || role.guild.id !== message.guildId) throw new Error('Use `!config_chat cargo @cargo`.');
-    await prisma.altaMovChatConfig.update({ where: { guildId: message.guildId }, data: { managerRoleId: role.id } });
   } else if (action === 'cooldown') {
     const seconds = Number(args[1]);
     if (!Number.isInteger(seconds) || seconds < 0 || seconds > 300) throw new Error('Use um cooldown entre 0 e 300 segundos.');
     await prisma.altaMovChatConfig.update({ where: { guildId: message.guildId }, data: { pointsCooldownSeconds: seconds } });
-  } else throw new Error('Opção inválida. Use `adicionar`, `remover`, `cargo` ou `cooldown`.');
+  } else throw new Error('Opção inválida. Use `adicionar`, `remover` ou `cooldown`.');
   await showConfig(message, await configFor(message.guildId));
 }
 
 async function memberStats(message: Message<true>) {
   const config = await configFor(message.guildId);
-  const user = message.mentions.users.first() ?? message.author;
+  const user = message.author;
   const stat = await prisma.altaMovChatStat.findUnique({ where: { guildId_userId: { guildId: message.guildId, userId: user.id } } });
   await message.channel.send(movChatMemberMessage(stat ? asRankingItem(stat) : {
     userId: user.id, messageCount: 0, scoredMessageCount: 0, chatPoints: 0, manualPoints: 0,
   }, config.cycleStartedAt));
-}
-
-async function ranking(message: Message<true>) {
-  const config = await configFor(message.guildId);
-  const stats = await prisma.altaMovChatStat.findMany({ where: { guildId: message.guildId } });
-  await message.channel.send(movChatRankingMessage(stats.map(asRankingItem), config.cycleStartedAt));
 }
 
 async function adjustPoints(message: Message<true>, direction: 1 | -1) {
@@ -516,7 +525,7 @@ export async function handleAltaMovChatCommand(message: Message) {
     const command = movChatCommandName(message.content);
     if (command === '!config_chat') await configure(message);
     else if (command === '!chat') await memberStats(message);
-    else if (command === '!mensagens') await ranking(message);
+    else if (command === '!mensagens') await memberStats(message);
     else if (command === '!dar_pontos') await adjustPoints(message, 1);
     else if (command === '!remover_pontos') await adjustPoints(message, -1);
     else if (command === '!resetar_chat' || command === '!resetar_rank') await requestReset(message);
@@ -535,29 +544,18 @@ export async function trackAltaMovChatMessage(message: Message) {
   });
   if (!channel) return false;
   await queueMutation(message.guildId, async () => {
-    const config = await configFor(message.guildId);
-    const current = await prisma.altaMovChatStat.findUnique({ where: { guildId_userId: { guildId: message.guildId, userId: message.author.id } } });
-    const now = new Date();
-    const meaningful = message.content.trim().length >= 3 || message.attachments.size > 0;
-    const outsideCooldown = !current?.lastScoredAt || now.getTime() - current.lastScoredAt.getTime() >= config.pointsCooldownSeconds * 1000;
-    const scored = meaningful && outsideCooldown && channel.pointsPerMessage > 0;
     await prisma.altaMovChatStat.upsert({
       where: { guildId_userId: { guildId: message.guildId, userId: message.author.id } },
       create: {
         guildId: message.guildId,
         userId: message.author.id,
         messageCount: 1,
-        scoredMessageCount: scored ? 1 : 0,
-        chatPoints: scored ? channel.pointsPerMessage : 0,
-        lastScoredAt: scored ? now : null,
+        scoredMessageCount: 0,
+        chatPoints: 0,
+        lastScoredAt: null,
       },
       update: {
         messageCount: { increment: 1 },
-        ...(scored ? {
-          scoredMessageCount: { increment: 1 },
-          chatPoints: { increment: channel.pointsPerMessage },
-          lastScoredAt: now,
-        } : {}),
       },
     });
   });

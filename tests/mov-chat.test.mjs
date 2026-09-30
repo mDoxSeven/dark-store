@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   ALTA_MOV_CHAT_COMMANDS,
   ALTA_MOV_CHAT_GUILD_ID,
+  ALTA_MOV_CHAT_LEADER_ROLE_ID,
   ALTA_MOV_CHAT_REPORT_CHANNEL_ID,
   ALTA_MOV_CHAT_REPORT_GUILD_ID,
   isAltaMovChatCommand,
@@ -21,6 +22,7 @@ test('Mov Chat usa os servidores e canal informados e mantém os comandos atuais
   assert.equal(ALTA_MOV_CHAT_GUILD_ID, '1309533710156169337');
   assert.equal(ALTA_MOV_CHAT_REPORT_GUILD_ID, '1542871650473746454');
   assert.equal(ALTA_MOV_CHAT_REPORT_CHANNEL_ID, '1554586776939794532');
+  assert.equal(ALTA_MOV_CHAT_LEADER_ROLE_ID, '1514152283380781157');
   for (const command of ['!config_chat', '!chat', '!mensagens', '!dar_pontos', '!remover_pontos', '!resetar_chat', '!resetar_rank', '!limpeza_chat']) {
     assert.equal(ALTA_MOV_CHAT_COMMANDS.has(command), true);
     assert.equal(isAltaMovChatCommand(`${command} teste`), true);
@@ -38,18 +40,22 @@ test('painéis V2 mostram configuração, desempenho e confirmação unificada',
   const config = JSON.stringify(movChatConfigMessage({ managerRoleId: '10', pointsCooldownSeconds: 10 }, [
     { channelId: '20', pointsPerMessage: 2 },
   ]));
-  assert.match(config, /CONFIGURAÇÃO — MOV CHAT/);
+  assert.match(config, /MOV CHAT — ALTA/);
   assert.match(config, /<#20>/);
-  assert.match(config, /2 ponto\(s\)/);
+  assert.match(config, /pontuação de participação é adicionada pela Líder/);
   assert.match(config, /sábado/);
   assert.match(config, /16:00/);
-  assert.match(config, /limpeza_chat/);
+  assert.match(config, /!chat/);
+  assert.match(config, /!mensagens/);
+  assert.doesNotMatch(config, /!resetar_rank/);
 
   const member = JSON.stringify(movChatMemberMessage({
     userId: '30', messageCount: 20, scoredMessageCount: 10, chatPoints: 20, manualPoints: -2,
   }, new Date('2026-09-28T03:05:00.000Z')));
   assert.match(member, /20/);
   assert.match(member, /18/);
+  assert.doesNotMatch(member, /Mensagens pontuadas/);
+  assert.doesNotMatch(member, /Pontos do chat/);
 
   const reset = JSON.stringify(movChatResetPrompt('40', new Date('2026-09-28T03:05:00.000Z')));
   assert.match(reset, /só serão reiniciados depois que o Discord confirmar/);
@@ -78,8 +84,7 @@ test('relatório semanal lista métricas individuais e usa Components V2', () =>
   const raw = JSON.stringify(report);
   assert.match(raw, /RELATÓRIO SEMANAL — MOV CHAT/);
   assert.match(raw, /100 mensagens/);
-  assert.match(raw, /70 válidas/);
-  assert.match(raw, /75 pts/);
+  assert.match(raw, /75 pontos/);
 });
 
 test('Angel registra mensagens, comandos, botões e agendador do Mov Chat', async () => {
@@ -89,7 +94,13 @@ test('Angel registra mensagens, comandos, botões e agendador do Mov Chat', asyn
   assert.match(bot, /handleAltaMovChatButton\(interaction\)/);
   assert.match(bot, /startAltaMovChatReports\(connected\)/);
   assert.match(bot, /startAltaMovChatCleanup\(connected\)/);
+  assert.match(bot, /applyAltaMovChatPolicy\(\)/);
   const module = await readFile(new URL('../src/alta/movChat.ts', import.meta.url), 'utf8');
+  assert.match(module, /member\.roles\.cache\.has\(ALTA_MOV_CHAT_LEADER_ROLE_ID\)/);
+  assert.doesNotMatch(module, /PermissionFlagsBits\.Administrator/);
+  assert.match(module, /const user = message\.author/);
+  assert.match(module, /command === '!mensagens'\) await memberStats\(message\)/);
+  assert.match(module, /data: \{ scoredMessageCount: 0, chatPoints: 0, lastScoredAt: null \}/);
   assert.match(module, /item => !item\.pinned && item\.deletable/);
   assert.match(module, /SnowflakeUtil\.generate/);
   assert.match(module, /before: job\.scanBeforeId/);
@@ -101,4 +112,5 @@ test('Angel registra mensagens, comandos, botões e agendador do Mov Chat', asyn
   }
   assert.match(schema, /entriesJson\s+String/);
   assert.match(schema, /status\s+String\s+@default\("PENDING"\)/);
+  assert.match(schema, /pointsPerMessage\s+Int\s+@default\(0\)/);
 });

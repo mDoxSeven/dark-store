@@ -22,30 +22,25 @@ export function movChatV2(content: string, options: {
 
 export function movChatConfigMessage(config: {
   managerRoleId: string | null;
-  pointsCooldownSeconds: number;
-}, channels: Array<{ channelId: string; pointsPerMessage: number }>) {
+}, channels: Array<{ channelId: string }>) {
   const channelLines = channels.length
-    ? channels.map(item => `• <#${item.channelId}> — **${item.pointsPerMessage} ponto(s)** por mensagem válida`).join('\n')
+    ? channels.map(item => `• <#${item.channelId}>`).join('\n')
     : '*Nenhum canal configurado.*';
   return movChatV2([
-    '# 💬 | CONFIGURAÇÃO — MOV CHAT',
-    '*Mensagens são contabilizadas normalmente; a pontuação usa proteção contra spam.*',
+    '# 💬 | MOV CHAT — ALTA',
+    '*O Angel contabiliza as mensagens. A pontuação de participação é adicionada pela Líder depois da conferência da meta.*',
     '',
-    `**Cargo gestor:** ${config.managerRoleId ? `<@&${config.managerRoleId}>` : 'somente administradores'}`,
-    `**Cooldown dos pontos:** ${config.pointsCooldownSeconds} segundo(s)`,
+    `**Gestão exclusiva:** ${config.managerRoleId ? `<@&${config.managerRoleId}>` : 'Líder'}`,
     '**Relatório automático:** sábado, `16:00` • horário de Brasília',
     '**Destino:** servidor Liderança Alta',
     '',
     '### Canais monitorados',
     channelLines,
     '',
-    '### Como configurar',
-    '`!config_chat adicionar #canal 1`',
-    '`!config_chat remover #canal`',
-    '`!config_chat cargo @cargo`',
-    '`!config_chat cooldown 10`',
-    '`!limpeza_chat` — acompanhar, pausar ou retomar a limpeza semanal',
-  ].join('\n'), { footer: 'Alta Cúpula • Mov Chat • configuração segura' });
+    '### Comandos dos membros',
+    '`!chat` — consultar suas mensagens e sua pontuação',
+    '`!mensagens` — consultar suas mensagens e sua pontuação',
+  ].join('\n'), { footer: 'Alta Cúpula • Mov Chat • consulta individual' });
 }
 
 export type MovChatRankingItem = {
@@ -92,10 +87,7 @@ export function movChatMemberMessage(item: MovChatRankingItem, cycleStartedAt: D
     `**Ciclo iniciado:** <t:${Math.floor(cycleStartedAt.getTime() / 1000)}:D>`,
     '',
     `💬 Mensagens enviadas: **${item.messageCount}**`,
-    `✅ Mensagens pontuadas: **${item.scoredMessageCount}**`,
-    `⭐ Pontos do chat: **${item.chatPoints}**`,
-    `🎁 Ajustes da gestão: **${item.manualPoints >= 0 ? '+' : ''}${item.manualPoints}**`,
-    `🏆 Pontuação total: **${totalPoints(item)}**`,
+    `🏆 Pontuação: **${totalPoints(item)}**`,
   ].join('\n'));
 }
 
@@ -144,7 +136,7 @@ export function movChatWeeklyReportMessage(items: MovChatRankingItem[], options:
     const position = (options.page - 1) * 15 + index + 1;
     return [
       `**${position}º • <@${item.userId}>**`,
-      `└ 💬 ${item.messageCount} mensagens • ✅ ${item.scoredMessageCount} válidas • ⭐ ${item.chatPoints} chat • 🎁 ${item.manualPoints >= 0 ? '+' : ''}${item.manualPoints} ajuste • **${totalPoints(item)} pts**`,
+      `└ 💬 **${item.messageCount} mensagens** • 🏆 **${totalPoints(item)} pontos**`,
     ].join('\n');
   });
   return movChatV2([
@@ -155,8 +147,7 @@ export function movChatWeeklyReportMessage(items: MovChatRankingItem[], options:
     '',
     `**Participantes:** ${summary.participants}`,
     `**Mensagens enviadas:** ${summary.messages}`,
-    `**Mensagens pontuadas:** ${summary.scoredMessages}`,
-    `**Pontuação distribuída:** ${summary.points}`,
+    `**Pontuação registrada pela Líder:** ${summary.points}`,
     '',
     '### Desempenho individual',
     lines.join('\n\n') || '*Nenhuma atividade registrada neste ciclo.*',
