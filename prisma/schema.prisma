@@ -594,6 +594,48 @@ model AltaMovChatCleanup {
   @@index([guildId, status, nextAttemptAt])
 }
 
+model EventsSettings {
+  guildId String @id
+  channelsJson String @default("{}")
+  managerRolesJson String @default("[]")
+  functionsJson String @default("[]")
+}
+
+model EventsRecord {
+  id String @id @default(cuid())
+  guildId String
+  kind String
+  userId String
+  key String? @unique
+  body String
+  status String @default("PENDING")
+  reviewerId String?
+  channelId String?
+  messageId String?
+  threadId String?
+  startsAt DateTime?
+  endsAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([guildId, kind, status])
+}
+
+model EventsAttendance {
+  id String @id @default(cuid())
+  guildId String
+  eventId String
+  userId String
+  functionKey String
+  functionName String
+  points Int
+  status String @default("PENDING")
+  reviewerId String?
+  messageId String?
+  createdAt DateTime @default(now())
+  @@unique([eventId, userId])
+  @@index([guildId, userId, status])
+}
+
 model AltaMovChatCleanupItem {
   messageId String   @id
   cleanupId String

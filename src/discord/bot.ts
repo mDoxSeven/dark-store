@@ -4,6 +4,7 @@ import {
   type MessageCreateOptions, type MessageEditOptions, type StringSelectMenuInteraction
 } from 'discord.js';
 import { prisma } from '../lib/db.js';
+import { eventsJoin, handleEventsCommand, handleEventsInteraction, startEvents } from '../events/module.js';
 import { AntiRaidEngine, respondToRaid, type AntiRaidResponder } from '../antiRaid.js';
 import { criarCommand, executeCriar } from '../bot/criar.js';
 import { configureDiscordRuntime } from '../runtime.js';
@@ -357,6 +358,7 @@ export async function startDiscord(token: string) {
   };
   client.on(Events.InteractionCreate, interaction => {
     void (async () => {
+      if (await handleEventsInteraction(interaction)) return;
       if (interaction.isStringSelectMenu() && interaction.customId === 'alta:suggestion:category') await selectSuggestion(interaction);
       else if (interaction.isButton() && interaction.customId.startsWith('alta:suggestion:')) await reviewSuggestion(interaction);
       else if (interaction.isButton() && interaction.customId.startsWith('passtime:')) await handlePasstimeButton(interaction);
@@ -396,6 +398,7 @@ export async function startDiscord(token: string) {
   client.on(Events.MessageCreate, message => {
     if (message.author.bot || !message.inGuild()) return;
     void (async () => {
+      if (await handleEventsCommand(message)) return;
       if (await collectSuggestion(message)) return;
       if (await handleAltaMovChatCommand(message)) return;
       if (await handlePasstimeCommand(message)) return;
@@ -408,6 +411,7 @@ export async function startDiscord(token: string) {
   });
   client.on(Events.GuildMemberAdd, joined => {
     void (async () => {
+      await eventsJoin(joined);
       if (joined.guild.id !== STORE_GUILD_ID || joined.user.bot) return;
       const unverified = await joined.guild.roles.fetch(UNVERIFIED_ROLE_ID);
       if (!unverified || unverified.managed || !unverified.editable) throw new Error('Cargo inicial ausente ou acima do bot. Execute /criar após corrigir a hierarquia.');
@@ -416,6 +420,9 @@ export async function startDiscord(token: string) {
       const result = raid.join(settings, joined.user.createdTimestamp);
       if (result.detected) await respondToRaid(prisma, settings, joined.id, 'JOIN_ALERT', result.reasons, responder(joined.guild));
     })().catch(error => console.error(`anti-raid entrada: ${errorText(error)}`));
+  });
+  client.on(Events.GuildCreate, guild => {
+    if (guild.id === '1443601058311176304' && client.isReady()) void startEvents(client).catch(error => console.error(`Eventos Alta: ${errorText(error)}`));
   });
   client.on(Events.PresenceUpdate, (_oldPresence, newPresence) => {
     rememberAltaSpotifyPresence(newPresence);
@@ -452,6 +459,7 @@ export async function startDiscord(token: string) {
         if (missing.length) throw new Error(`Permissões ausentes no servidor: ${missing.join(', ')}.`);
         await guild.commands.set([criarCommand.toJSON()]);
         const altaGuild = await connected.guilds.fetch(ALTA_GUILD_ID).catch(() => null);
+        void startEvents(connected).catch(error => console.error(`Eventos Alta: ${errorText(error)}`));
         if (altaGuild) {
           void startAltaSuggestions(connected).catch(error => console.error(`Sugestões Alta: ${errorText(error)}`));
           await altaGuild.commands.set([

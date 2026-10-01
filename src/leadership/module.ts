@@ -1,3 +1,4 @@
+import { eventsScheduleEntries } from '../events/schedule.js';
 import {
   ActionRowBuilder, ChannelType, MessageFlags, ModalBuilder, OverwriteType, PermissionFlagsBits,
   TextInputBuilder, TextInputStyle,
@@ -183,9 +184,10 @@ async function combinedScheduleEntries() {
     where: { guildId: LEADERSHIP_GUILD_ID, roleId: '1542876179353051228' },
     data: { roleId: LEADERSHIP_AREAS.find(area => area.key === 'mov-chat')!.roleId },
   });
-  const [leadership, passtime] = await Promise.all([
+  const [leadership, passtime, events] = await Promise.all([
     prisma.leadershipScheduleEntry.findMany({ where: { guildId: LEADERSHIP_GUILD_ID } }),
     prisma.passtimeScheduleEntry.findMany({ where: { guildId: PASSTIME_GUILD_ID } }),
+    eventsScheduleEntries(),
   ]);
   const passtimeArea = LEADERSHIP_AREAS.find(area => area.key === 'passtime')!;
   return [
@@ -198,6 +200,7 @@ async function combinedScheduleEntries() {
       roleId: passtimeArea.roleId,
       position: 10_000 + index,
     })),
+    ...events,
   ];
 }
 
