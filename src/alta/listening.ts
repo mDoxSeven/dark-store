@@ -85,7 +85,7 @@ export function isSpotifyPresenceActivity(activity: Pick<Activity, 'name' | 'typ
 export function rememberAltaSpotifyPresence(presence: Presence) {
   if (presence.guild?.id !== ALTA_GUILD_ID) return false;
   const activity = presence.activities.find(isSpotifyPresenceActivity);
-  if (!activity) return false;
+  if (!activity) { spotifyPresenceCache.delete(presenceKey(presence.guild.id, presence.userId)); return false; }
   spotifyPresenceCache.set(presenceKey(presence.guild.id, presence.userId), { activity, seenAt: Date.now() });
   return true;
 }
@@ -121,7 +121,7 @@ function rememberRawActivities(guildId: string, userId: string, activities: RawA
     return name.includes('spotify') || image.startsWith('spotify:')
       || item.type === ActivityType.Listening && Boolean(item.sync_id && item.details && item.state);
   });
-  if (!raw) return false;
+  if (!raw) { spotifyPresenceCache.delete(key); return false; }
   const largeImage = raw.assets?.large_image ?? null;
   const activity = {
     name: raw.name ?? 'Spotify',
@@ -169,8 +169,8 @@ function recentSpotifyActivity(guildId: string, userId: string, now = Date.now()
   const cached = spotifyPresenceCache.get(key);
   if (!cached) return null;
   const trackEnd = cached.activity.timestamps?.end?.getTime();
-  const expiresAt = trackEnd ? trackEnd + 15_000 : cached.seenAt + 120_000;
-  if (now > expiresAt) {
+  const expiresAt = trackEnd ?? cached.seenAt + 120_000;
+  if (now >= expiresAt) {
     spotifyPresenceCache.delete(key);
     return null;
   }
@@ -297,6 +297,22 @@ async function sendRenderedListeningCard(message: Message, track: AltaSpotifyTra
   await sendAltaListeningCard(message, altaListeningMessage(message.author.id, track, now, spotifyEmoji, card));
 }
 
+export async function findAltaSpotifyActivity(message: Message, refresh = false): Promise<Activity | null> {
+  if (!message.inGuild() || message.guildId !== ALTA_GUILD_ID || process.env.DARK_SPOTIFY_PRESENCE_ENABLED !== 'true') return null;
+  const current = () => {
+    const presence = message.guild.presences.cache.get(message.author.id) ?? message.guild.members.cache.get(message.author.id)?.presence ?? message.member?.presence;
+    const activity = presence?.activities.find(isSpotifyPresenceActivity);
+    // Don't reuse an ended track as "playing now".
+    if (activity && (!activity.timestamps?.end || activity.timestamps.end.getTime() > Date.now())) return activity;
+    return recentSpotifyActivity(message.guildId, message.author.id);
+  };
+  const cached = current();
+  if (cached || !refresh) return cached;
+  await message.guild.members.fetch({ user: [message.author.id], withPresences: true, time: 8_000 })
+    .catch(error => console.warn(`[alta!ouvindo] atualização forçada falhou para ${message.author.id}: ${error instanceof Error ? error.message : error}`));
+  return current();
+}
+
 export async function handleAltaListeningCommand(message: Message) {
   if (!isAltaListeningCommand(message.content)) return false;
   if (!message.inGuild() || message.guildId !== ALTA_GUILD_ID) {
@@ -308,6 +324,18 @@ export async function handleAltaListeningCommand(message: Message) {
     return true;
   }
   const spotifyEmoji = message.client.emojis.cache.has(ALTA_SPOTIFY_EMOJI_ID) ? ALTA_SPOTIFY_EMOJI : '🟢';
+  let refreshedPresence = false;
+  const sendFromDiscord = async (refresh: boolean) => {
+    if (refresh && refreshedPresence) return false;
+    if (refresh) refreshedPresence = true;
+    const activity = await findAltaSpotifyActivity(message, refresh);
+    if (!activity) return false;
+    console.log(`[alta!ouvindo] fonte=discord usuario=${message.author.id}`);
+    await sendRenderedListeningCard(message, spotifyTrackFromActivity(activity), spotifyEmoji);
+    return true;
+  };
+  // Visible activity works independently of Spotify's app allowlist.
+  if (await sendFromDiscord(false)) return true;
   if (spotifyOAuthConfigured()) {
     try {
       const playback = await spotifyCurrentlyPlaying(message.author.id);
@@ -318,6 +346,7 @@ export async function handleAltaListeningCommand(message: Message) {
         }, spotifyEmoji);
         return true;
       }
+      if (await sendFromDiscord(true)) return true;
       if (playback.status === 'not_connected' || playback.status === 'reauthorize') {
         const authorizeUrl = await createSpotifyAuthorization(message.author.id);
         const delivered = await message.author.send(altaSpotifyConnectMessage(authorizeUrl, spotifyEmoji, playback.status === 'reauthorize'))
@@ -337,7 +366,11 @@ export async function handleAltaListeningCommand(message: Message) {
       return true;
     } catch (error) {
       console.error(`alta!ouvindo OAuth: ${error instanceof Error ? error.message : error}`);
-      await message.channel.send({ content: 'Não consegui consultar ou exibir o Spotify agora. Aguarde um pouco e tente novamente.', allowedMentions: { parse: [] } });
+      if (await sendFromDiscord(true)) return true;
+      const blocked = error instanceof Error && error.message.includes('recusou o acesso à reprodução');
+      await message.channel.send({ content: blocked
+        ? 'O Spotify bloqueou a consulta desta conta no aplicativo do Angel. A administração precisa autorizar sua conta em Users Management. Também tente compartilhar sua atividade do Spotify no Discord para usar a captura alternativa.'
+        : 'Não consegui consultar ou exibir o Spotify agora. Aguarde um pouco e tente novamente.', allowedMentions: { parse: [] } });
       return true;
     }
   }
@@ -345,22 +378,10 @@ export async function handleAltaListeningCommand(message: Message) {
     await message.reply({ content: 'O Spotify OAuth ainda não foi configurado no Angel.', allowedMentions: { repliedUser: false } });
     return true;
   }
-  let presence = message.guild.presences.cache.get(message.author.id) ?? message.member?.presence;
-  let activities = presence?.activities ?? [];
-  let activity = activities.find(isSpotifyPresenceActivity);
-  if (activity && presence) rememberAltaSpotifyPresence(presence);
-  if (!activity) {
-    await message.guild.members.fetch({
-      user: [message.author.id],
-      withPresences: true,
-      time: 8_000,
-    }).catch(error => console.warn(`[alta!ouvindo] atualização forçada falhou para ${message.author.id}: ${error instanceof Error ? error.message : error}`));
-    presence = message.guild.presences.cache.get(message.author.id) ?? message.guild.members.cache.get(message.author.id)?.presence;
-    activities = presence?.activities ?? [];
-    activity = activities.find(isSpotifyPresenceActivity) ?? recentSpotifyActivity(message.guildId, message.author.id) ?? undefined;
-    if (activity && presence) rememberAltaSpotifyPresence(presence);
-  }
-  if (!activity) {
+  if (await sendFromDiscord(true)) return true;
+  {
+    const presence = message.guild.presences.cache.get(message.author.id) ?? message.member?.presence;
+    const activities = presence?.activities ?? [];
     const received = activities.length
       ? activities.map(item => `${item.name}[${item.type}]`).join(', ')
       : 'nenhuma';
@@ -372,6 +393,4 @@ export async function handleAltaListeningCommand(message: Message) {
     });
     return true;
   }
-  await sendRenderedListeningCard(message, spotifyTrackFromActivity(activity), spotifyEmoji);
-  return true;
 }

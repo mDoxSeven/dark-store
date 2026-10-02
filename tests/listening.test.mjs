@@ -3,11 +3,33 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
   ALTA_LISTENING_COMMAND, ALTA_SPOTIFY_EMOJI, altaListeningMessage, altaSpotifyConnectMessage, isAltaListeningCommand,
-  isSpotifyPresenceActivity, rememberRawAltaSpotifyPresence, sendAltaListeningCard,
+  isSpotifyPresenceActivity, rememberRawAltaSpotifyPresence, sendAltaListeningCard, findAltaSpotifyActivity,
 } from '../src/alta/listening.ts';
 import { spotifyOAuthCallbackMatches } from '../src/alta/spotifyOAuth.ts';
 import sharp from 'sharp';
 import { listeningCardSvg, renderListeningCard } from '../src/alta/listeningCard.ts';
+
+test('captura alternativa usa presença sem OAuth e só consulta Gateway quando solicitado', async () => {
+  const previous = process.env.DARK_SPOTIFY_PRESENCE_ENABLED;
+  process.env.DARK_SPOTIFY_PRESENCE_ENABLED = 'true';
+  const activity = { name: 'Spotify', type: 2, details: 'Faixa', state: 'Artista', assets: null, syncId: 'track', timestamps: { end: new Date(Date.now()+60000) } };
+  let fetches = 0;
+  const presences = new Map();
+  const message = { guildId: '1309533710156169337', inGuild: () => true, author: { id: '987654321987654321' },
+    guild: { presences: { cache: presences }, members: { cache: new Map(), fetch: async () => { fetches++; presences.set(message.author.id,{ activities: [activity] }); } } } };
+  try {
+    assert.equal(await findAltaSpotifyActivity(message),null);
+    assert.equal(fetches,0);
+    assert.equal(await findAltaSpotifyActivity(message,true),activity);
+    assert.equal(fetches,1);
+    assert.equal(await findAltaSpotifyActivity(message),activity);
+    activity.timestamps.end = new Date(Date.now()-1000);
+    assert.equal(await findAltaSpotifyActivity(message),null);
+    process.env.DARK_SPOTIFY_PRESENCE_ENABLED = 'false';
+    assert.equal(await findAltaSpotifyActivity(message,true),null);
+    assert.equal(fetches,1);
+  } finally { if(previous===undefined)delete process.env.DARK_SPOTIFY_PRESENCE_ENABLED;else process.env.DARK_SPOTIFY_PRESENCE_ENABLED=previous; }
+});
 
 test('card renderizado produz GIF animado legível com tempo e payload V2 de imagem', async () => {
   const now = 100000;
