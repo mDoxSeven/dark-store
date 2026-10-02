@@ -3,9 +3,31 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
   ALTA_LISTENING_COMMAND, ALTA_SPOTIFY_EMOJI, altaListeningMessage, altaSpotifyConnectMessage, isAltaListeningCommand,
-  isSpotifyPresenceActivity, rememberRawAltaSpotifyPresence,
+  isSpotifyPresenceActivity, rememberRawAltaSpotifyPresence, sendAltaListeningCard,
 } from '../src/alta/listening.ts';
 import { spotifyOAuthCallbackMatches } from '../src/alta/spotifyOAuth.ts';
+
+test('ouvindo apaga o comando antes de enviar o card sem referência à mensagem original', async () => {
+  const calls = [];
+  const payload = altaListeningMessage('123', { title: 'Faixa', artists: 'Artista', album: 'Álbum', trackId: null, coverUrl: null, startedAt: null, endsAt: null });
+  await sendAltaListeningCard({ inGuild: () => true, guildId: '1309533710156169337',
+    delete: async () => { calls.push('delete'); },
+    channel: { send: async value => { calls.push('send'); assert.equal(value, payload); assert.equal(value.reply, undefined); } },
+  }, payload);
+  assert.deepEqual(calls, ['delete', 'send']);
+});
+
+test('ouvindo mantém envio do card quando não pode apagar; não apaga fora da Alta', async () => {
+  const calls = [];
+  const message = { id: 'command', inGuild: () => true, guildId: '1309533710156169337',
+    delete: async () => { calls.push('delete'); throw new Error('Missing Permissions'); },
+    channel: { send: async () => { calls.push('send'); } },
+  };
+  await sendAltaListeningCard(message, {});
+  assert.deepEqual(calls, ['delete', 'send']);
+  await sendAltaListeningCard({ ...message, guildId: 'other' }, {});
+  assert.equal(calls.length, 2);
+});
 
 test('comando alta!ouvindo é reconhecido sem capturar textos parecidos', () => {
   assert.equal(ALTA_LISTENING_COMMAND, 'alta!ouvindo');

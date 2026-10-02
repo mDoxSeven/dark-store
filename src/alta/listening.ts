@@ -263,6 +263,17 @@ export function isAltaListeningCommand(content: string) {
   return content.trim().split(/\s+/, 1)[0]?.toLocaleLowerCase('pt-BR') === ALTA_LISTENING_COMMAND;
 }
 
+export async function sendAltaListeningCard(message: Message, payload: MessageCreateOptions) {
+  if (!message.inGuild() || message.guildId !== ALTA_GUILD_ID) return;
+  try {
+    await message.delete();
+  } catch (error) {
+    console.warn(`[alta!ouvindo] Não foi possível apagar o comando ${message.id}: ${error instanceof Error ? error.message : error}`);
+  }
+  // Send independently: the original command may already have been deleted.
+  await message.channel.send(payload);
+}
+
 export async function handleAltaListeningCommand(message: Message) {
   if (!isAltaListeningCommand(message.content)) return false;
   if (!message.inGuild() || message.guildId !== ALTA_GUILD_ID) {
@@ -278,7 +289,7 @@ export async function handleAltaListeningCommand(message: Message) {
     try {
       const playback = await spotifyCurrentlyPlaying(message.author.id);
       if (playback.status === 'playing') {
-        await message.channel.send(altaListeningMessage(message.author.id, {
+        await sendAltaListeningCard(message, altaListeningMessage(message.author.id, {
           ...playback.track,
           trackId: null,
         }, Date.now(), spotifyEmoji));
@@ -303,7 +314,7 @@ export async function handleAltaListeningCommand(message: Message) {
       return true;
     } catch (error) {
       console.error(`alta!ouvindo OAuth: ${error instanceof Error ? error.message : error}`);
-      await message.reply({ content: 'Não consegui consultar o Spotify agora. Aguarde um pouco e tente novamente.', allowedMentions: { repliedUser: false } });
+      await message.channel.send({ content: 'Não consegui consultar ou exibir o Spotify agora. Aguarde um pouco e tente novamente.', allowedMentions: { parse: [] } });
       return true;
     }
   }
@@ -338,6 +349,6 @@ export async function handleAltaListeningCommand(message: Message) {
     });
     return true;
   }
-  await message.channel.send(altaListeningMessage(message.author.id, spotifyTrackFromActivity(activity), Date.now(), spotifyEmoji));
+  await sendAltaListeningCard(message, altaListeningMessage(message.author.id, spotifyTrackFromActivity(activity), Date.now(), spotifyEmoji));
   return true;
 }
