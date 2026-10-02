@@ -81,6 +81,15 @@ export function spotifyOAuthConfigured() {
   return Boolean(configuration());
 }
 
+export async function resetSpotifyConnection(discordUserId: string) {
+  if (!/^\d{17,20}$/.test(discordUserId)) throw new Error('Usuário do Discord inválido.');
+  const [connection] = await prisma.$transaction([
+    prisma.spotifyConnection.deleteMany({ where: { discordUserId } }),
+    prisma.spotifyOAuthState.deleteMany({ where: { discordUserId } }),
+  ]);
+  return connection.count > 0;
+}
+
 export function spotifyOAuthCallbackMatches(host: string, path: string) {
   const config = configuration();
   return Boolean(config && host === config.redirect.host && path === config.redirect.pathname);

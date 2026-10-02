@@ -8,7 +8,7 @@ import {
 import { ALTA_GUILD_ID } from './rise.js';
 import { renderListeningCard } from './listeningCard.js';
 import {
-  createSpotifyAuthorization, spotifyCurrentlyPlaying, spotifyOAuthConfigured,
+  createSpotifyAuthorization, resetSpotifyConnection, spotifyCurrentlyPlaying, spotifyOAuthConfigured,
 } from './spotifyOAuth.js';
 
 export const ALTA_LISTENING_COMMAND = 'alta!ouvindo';
@@ -319,11 +319,28 @@ export async function handleAltaListeningCommand(message: Message) {
     await message.reply({ content: 'O `alta!ouvindo` funciona somente no servidor oficial da Alta.', allowedMentions: { repliedUser: false } });
     return true;
   }
-  if (message.content.trim().split(/\s+/).length !== 1) {
-    await message.reply({ content: 'Use apenas `alta!ouvindo` para mostrar a música que você está escutando.', allowedMentions: { repliedUser: false } });
+  const parts = message.content.trim().toLocaleLowerCase('pt-BR').split(/\s+/);
+  if (parts.length > 2 || (parts.length === 2 && !['reconectar', 'resetar'].includes(parts[1]!))) {
+    await message.reply({ content: 'Use `alta!ouvindo` para mostrar a música ou `alta!ouvindo reconectar` para refazer sua conexão.', allowedMentions: { repliedUser: false } });
     return true;
   }
   const spotifyEmoji = message.client.emojis.cache.has(ALTA_SPOTIFY_EMOJI_ID) ? ALTA_SPOTIFY_EMOJI : '🟢';
+  if (parts.length === 2) {
+    if (!spotifyOAuthConfigured()) {
+      await message.reply({ content: 'O Spotify OAuth ainda não foi configurado no Angel.', allowedMentions: { repliedUser: false } });
+      return true;
+    }
+    const authorizeUrl = await createSpotifyAuthorization(message.author.id);
+    const delivered = await message.author.send(altaSpotifyConnectMessage(authorizeUrl, spotifyEmoji, true)).then(() => true).catch(() => false);
+    if (!delivered) {
+      await message.reply({ content: 'Não consegui enviar o novo botão. Libere mensagens diretas deste servidor e tente novamente.', allowedMentions: { repliedUser: false } });
+      return true;
+    }
+    const removed = await resetSpotifyConnection(message.author.id);
+    await message.delete().catch(() => {});
+    await message.channel.send({ content: `${spotifyEmoji} <@${message.author.id}>, ${removed ? 'sua conexão antiga foi removida e o novo botão está' : 'o botão de conexão está'} no seu privado.`, allowedMentions: { users: [message.author.id] } });
+    return true;
+  }
   let refreshedPresence = false;
   const sendFromDiscord = async (refresh: boolean) => {
     if (refresh && refreshedPresence) return false;

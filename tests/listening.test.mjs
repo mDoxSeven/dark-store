@@ -5,9 +5,10 @@ import {
   ALTA_LISTENING_COMMAND, ALTA_SPOTIFY_EMOJI, altaListeningMessage, altaSpotifyConnectMessage, isAltaListeningCommand,
   isSpotifyPresenceActivity, rememberRawAltaSpotifyPresence, sendAltaListeningCard, findAltaSpotifyActivity,
 } from '../src/alta/listening.ts';
-import { spotifyOAuthCallbackMatches } from '../src/alta/spotifyOAuth.ts';
+import { resetSpotifyConnection, spotifyOAuthCallbackMatches } from '../src/alta/spotifyOAuth.ts';
 import sharp from 'sharp';
 import { listeningCardSvg, renderListeningCard } from '../src/alta/listeningCard.ts';
+import { prisma } from '../src/lib/db.ts';
 
 test('captura alternativa usa presença sem OAuth e só consulta Gateway quando solicitado', async () => {
   const previous = process.env.DARK_SPOTIFY_PRESENCE_ENABLED;
@@ -166,6 +167,21 @@ test('OAuth gera painel de conexão e limita o callback ao host configurado', ()
     if (previous.secret === undefined) delete process.env.SPOTIFY_CLIENT_SECRET; else process.env.SPOTIFY_CLIENT_SECRET = previous.secret;
     if (previous.redirect === undefined) delete process.env.SPOTIFY_REDIRECT_URI; else process.env.SPOTIFY_REDIRECT_URI = previous.redirect;
   }
+});
+
+test('reset de conexão remove token e estados pendentes somente do próprio usuário', async () => {
+  const previous = [prisma.$transaction, prisma.spotifyConnection.deleteMany, prisma.spotifyOAuthState.deleteMany];
+  let transaction;
+  prisma.spotifyConnection.deleteMany = query => ({ kind: 'connection', query });
+  prisma.spotifyOAuthState.deleteMany = query => ({ kind: 'state', query });
+  prisma.$transaction = async queries => { transaction = queries; return [{ count: 1 }, { count: 2 }]; };
+  try {
+    assert.equal(await resetSpotifyConnection('123456789012345678'), true);
+    assert.equal(transaction.length, 2);
+    assert.equal(transaction[0].query.where.discordUserId, '123456789012345678');
+    assert.equal(transaction[1].query.where.discordUserId, '123456789012345678');
+    await assert.rejects(resetSpotifyConnection('invalido'), /inválido/);
+  } finally { [prisma.$transaction, prisma.spotifyConnection.deleteMany, prisma.spotifyOAuthState.deleteMany] = previous; }
 });
 
 test('Angel encaminha o prefixo e habilita presença somente por configuração', async () => {
