@@ -6,6 +6,7 @@ import {
   type Presence,
 } from 'discord.js';
 import { ALTA_GUILD_ID } from './rise.js';
+import { renderListeningCard } from './listeningCard.js';
 import {
   createSpotifyAuthorization, spotifyCurrentlyPlaying, spotifyOAuthConfigured,
 } from './spotifyOAuth.js';
@@ -176,7 +177,7 @@ function recentSpotifyActivity(guildId: string, userId: string, now = Date.now()
   return cached.activity;
 }
 
-export function altaListeningMessage(userId: string, track: AltaSpotifyTrack, now = Date.now(), spotifyEmoji = ALTA_SPOTIFY_EMOJI): MessageCreateOptions {
+export function altaListeningMessage(userId: string, track: AltaSpotifyTrack, now = Date.now(), spotifyEmoji = ALTA_SPOTIFY_EMOJI, card?: Buffer): MessageCreateOptions {
   const playback = progress(track, now);
   const title = discordText(track.title, 90);
   const artists = discordText(track.artists, 120);
@@ -201,6 +202,16 @@ export function altaListeningMessage(userId: string, track: AltaSpotifyTrack, no
     ].join('\n') },
   ];
   const spotifyUrl = track.spotifyUrl ?? (track.trackId ? `https://open.spotify.com/track/${encodeURIComponent(track.trackId)}` : null);
+  if (card) return {
+    flags: 32768,
+    allowedMentions: { parse: [] },
+    files: [{ attachment: card, name: 'alta-ouvindo.gif' }],
+    components: [
+      { type: 10, content: `## ${spotifyEmoji} Tocando Agora\n• **${title}**` },
+      { type: 12, items: [{ media: { url: 'attachment://alta-ouvindo.gif' }, description: `${title} — ${artists}. ${playback.elapsed} / ${playback.total}` }] },
+      ...(spotifyUrl ? [{ type: 1, components: [{ type: 2, style: 5, label: 'Ouvir no Spotify', url: spotifyUrl }] }] : []),
+    ],
+  } as unknown as MessageCreateOptions;
   if (spotifyUrl) components.push({
     type: 14,
     divider: true,
@@ -274,6 +285,18 @@ export async function sendAltaListeningCard(message: Message, payload: MessageCr
   await message.channel.send(payload);
 }
 
+async function sendRenderedListeningCard(message: Message, track: AltaSpotifyTrack, spotifyEmoji: string) {
+  const now = Date.now();
+  let card: Buffer | undefined;
+  try {
+    card = await renderListeningCard(track, message.member?.displayName ?? message.author.displayName,
+      message.author.displayAvatarURL({ extension: 'png', size: 64 }), now);
+  } catch (error) {
+    console.warn(`[alta!ouvindo] Card visual indisponível: ${error instanceof Error ? error.message : error}`);
+  }
+  await sendAltaListeningCard(message, altaListeningMessage(message.author.id, track, now, spotifyEmoji, card));
+}
+
 export async function handleAltaListeningCommand(message: Message) {
   if (!isAltaListeningCommand(message.content)) return false;
   if (!message.inGuild() || message.guildId !== ALTA_GUILD_ID) {
@@ -289,10 +312,10 @@ export async function handleAltaListeningCommand(message: Message) {
     try {
       const playback = await spotifyCurrentlyPlaying(message.author.id);
       if (playback.status === 'playing') {
-        await sendAltaListeningCard(message, altaListeningMessage(message.author.id, {
+        await sendRenderedListeningCard(message, {
           ...playback.track,
           trackId: null,
-        }, Date.now(), spotifyEmoji));
+        }, spotifyEmoji);
         return true;
       }
       if (playback.status === 'not_connected' || playback.status === 'reauthorize') {
@@ -349,6 +372,6 @@ export async function handleAltaListeningCommand(message: Message) {
     });
     return true;
   }
-  await sendAltaListeningCard(message, altaListeningMessage(message.author.id, spotifyTrackFromActivity(activity), Date.now(), spotifyEmoji));
+  await sendRenderedListeningCard(message, spotifyTrackFromActivity(activity), spotifyEmoji);
   return true;
 }

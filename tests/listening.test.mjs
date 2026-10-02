@@ -6,6 +6,28 @@ import {
   isSpotifyPresenceActivity, rememberRawAltaSpotifyPresence, sendAltaListeningCard,
 } from '../src/alta/listening.ts';
 import { spotifyOAuthCallbackMatches } from '../src/alta/spotifyOAuth.ts';
+import sharp from 'sharp';
+import { listeningCardSvg, renderListeningCard } from '../src/alta/listeningCard.ts';
+
+test('card renderizado produz GIF animado legível com tempo e payload V2 de imagem', async () => {
+  const now = 100000;
+  const track = { title: 'Faixa <teste> & música', artists: 'Artista', album: 'Álbum', trackId: 'track', coverUrl: null, startedAt: now - 38000, endsAt: now + 159000 };
+  const svg = listeningCardSvg(track, 'Seven', now, 0);
+  assert.match(svg, /&lt;teste&gt; &amp;/);
+  assert.match(svg, /0:38/);
+  assert.match(svg, /3:17/);
+  const gif = await renderListeningCard(track, 'Seven', null, now);
+  const metadata = await sharp(gif, { animated: true }).metadata();
+  assert.equal(metadata.format, 'gif');
+  assert.equal(metadata.pages, 12);
+  assert.equal(metadata.pageHeight, 324);
+  assert.ok(metadata.delay.every(ms => ms === 90));
+  assert.ok(gif.length < 8_000_000);
+  const panel = altaListeningMessage('123',track,now,ALTA_SPOTIFY_EMOJI,gif);
+  assert.equal(panel.files[0].attachment,gif);
+  assert.match(JSON.stringify(panel.components),/attachment:\/\/alta-ouvindo.gif/);
+  assert.match(JSON.stringify(panel.components),/https:\/\/open.spotify.com\/track\/track/);
+});
 
 test('ouvindo apaga o comando antes de enviar o card sem referência à mensagem original', async () => {
   const calls = [];

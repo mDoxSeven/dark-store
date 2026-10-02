@@ -1,0 +1,11 @@
+import { mkdir, writeFile } from 'node:fs/promises';
+import sharp from 'sharp';
+import { fileURLToPath } from 'node:url';
+import { listeningCardSvg, renderListeningCard } from '../src/alta/listeningCard.ts';
+const now=Date.now();
+const track={title:'Untitled Demo 1997',artists:'Panchiko',album:'Ferric Oxide (Demos 1997 – 2001)',trackId:null,coverUrl:null,startedAt:now-115000,endsAt:now+45000};
+const cover=await sharp(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="284" height="284"><defs><linearGradient id="g" y2="1" x2=".6"><stop stop-color="#6e8b97"/><stop offset="1" stop-color="#273f48"/></linearGradient></defs><rect width="284" height="284" fill="url(#g)"/><text x="22" y="60" font-family="sans-serif" font-weight="bold" font-style="italic" font-size="36" fill="#fff">PANCHIKO</text><path d="M0 210h284v74H0" fill="#96a7ad" opacity=".3"/><path d="M30 208v-80h75v80m30 0v-58h100v58" fill="none" stroke="#bac7c8" stroke-width="5" opacity=".5"/><text x="22" y="85" font-family="sans-serif" font-size="8" fill="#fff">FERRIC OXIDE · DEMOS</text></svg>')).png().toBuffer();
+await mkdir(new URL('../test-results/',import.meta.url),{recursive:true});
+await sharp(Buffer.from(listeningCardSvg(track,'mSeven',now,2,`data:image/png;base64,${cover.toString('base64')}`))).png().toFile(fileURLToPath(new URL('../test-results/listening-preview.png',import.meta.url)));
+await writeFile(new URL('../test-results/listening-preview.gif',import.meta.url),await renderListeningCard(track,'mSeven',null,now));
+console.log('Preview salvo em test-results/listening-preview.png e .gif');
