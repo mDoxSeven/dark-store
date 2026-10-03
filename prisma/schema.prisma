@@ -501,6 +501,49 @@ model SpotifyConnection {
   updatedAt       DateTime @updatedAt
 }
 
+model AltaEventDraft {
+  guildId   String   @id
+  title     String   @default("")
+  body      String   @default("")
+  artData   Bytes?
+  artMime   String?
+  artName   String?
+  updatedBy String
+  updatedAt DateTime @updatedAt
+}
+
+model AltaEventBroadcast {
+  id          String   @id @default(cuid())
+  guildId     String
+  roleId      String
+  title       String
+  body        String
+  artData     Bytes?
+  artMime     String?
+  artName     String?
+  requestedBy String
+  status      String   @default("PENDING")
+  targetCount Int      @default(0)
+  sentCount   Int      @default(0)
+  failedCount Int      @default(0)
+  createdAt   DateTime @default(now())
+  completedAt DateTime?
+  deliveries  AltaEventDelivery[]
+  @@index([guildId, status])
+}
+
+model AltaEventDelivery {
+  id          String   @id @default(cuid())
+  broadcastId String
+  userId      String
+  status      String   @default("PENDING")
+  lastError   String?
+  updatedAt   DateTime @updatedAt
+  broadcast   AltaEventBroadcast @relation(fields: [broadcastId], references: [id], onDelete: Cascade)
+  @@unique([broadcastId, userId])
+  @@index([broadcastId, status])
+}
+
 model AltaMovChatConfig {
   guildId               String   @id
   managerRoleId         String?

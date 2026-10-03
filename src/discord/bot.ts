@@ -32,6 +32,7 @@ import { VORTEX_SUPPORT_SELECT_ID } from '../vortex/supportMessages.js';
 import { ALTA_GUILD_ID, altaRiseCommand, executeAltaRiseCommand, handleAltaRiseCommand } from '../alta/rise.js';
 import { handleAltaListeningCommand, rememberAltaSpotifyPresence, rememberRawAltaSpotifyPresence } from '../alta/listening.js';
 import { startAltaSuggestions, selectSuggestion, collectSuggestion, reviewSuggestion } from '../alta/suggestions.js';
+import { altaEventCommand, altaEventStatusV2, executeAltaEventCommand, handleAltaEventButton, startAltaEventBroadcasts } from '../alta/eventBroadcast.js';
 import {
   applyAltaMovChatPolicy, handleAltaMovChatButton, handleAltaMovChatCommand,
   startAltaMovChatCleanup, startAltaMovChatReports, trackAltaMovChatMessage,
@@ -359,6 +360,7 @@ export async function startDiscord(token: string) {
   client.on(Events.InteractionCreate, interaction => {
     void (async () => {
       if (await handleEventsInteraction(interaction)) return;
+      if (interaction.isButton() && interaction.customId.startsWith('alta:evento:')) { await handleAltaEventButton(interaction); return; }
       if (interaction.isStringSelectMenu() && interaction.customId === 'alta:suggestion:category') await selectSuggestion(interaction);
       else if (interaction.isButton() && interaction.customId.startsWith('alta:suggestion:')) await reviewSuggestion(interaction);
       else if (interaction.isButton() && interaction.customId.startsWith('passtime:')) await handlePasstimeButton(interaction);
@@ -372,6 +374,7 @@ export async function startDiscord(token: string) {
       else if (interaction.isStringSelectMenu() && interaction.customId === VORTEX_SUPPORT_SELECT_ID) await handleVortexSupportSelect(interaction);
       else if (interaction.isButton() && interaction.customId.startsWith('vortex:support:')) await handleVortexSupportButton(interaction);
       else if (interaction.isChatInputCommand() && interaction.commandName === 'avisorise') await executeAltaRiseCommand(interaction);
+      else if (interaction.isChatInputCommand() && interaction.commandName === 'evento') await executeAltaEventCommand(interaction);
       else if (interaction.isChatInputCommand() && interaction.commandName === 'rec') await executeAltaRecruitmentCommand(interaction);
       else if (interaction.isChatInputCommand() && interaction.commandName === 'relatoriorec') await executeAltaRecruitmentReport(interaction);
       else if (interaction.isChatInputCommand() && interaction.commandName === 'resetrec') await executeAltaRecruitmentReset(interaction);
@@ -390,7 +393,9 @@ export async function startDiscord(token: string) {
     })().catch(async error => {
       const message = errorText(error);
       if (interaction.isRepliable()) {
-        if (interaction.deferred || interaction.replied) await interaction.editReply({ content: message, components: [] }).catch(() => {});
+        if (interaction.deferred || interaction.replied) await interaction.editReply(interaction.isButton() && interaction.customId.startsWith('alta:evento:')
+          ? altaEventStatusV2(`### Ação não concluída\n${message}`) as never
+          : { content: message, components: [] }).catch(() => {});
         else await interaction.reply({ content: message, flags: MessageFlags.Ephemeral }).catch(() => {});
       }
     });
@@ -463,16 +468,17 @@ export async function startDiscord(token: string) {
         if (altaGuild) {
           void startAltaSuggestions(connected).catch(error => console.error(`Sugestões Alta: ${errorText(error)}`));
           await altaGuild.commands.set([
-            altaRiseCommand.toJSON(), altaRecruitmentCommand.toJSON(),
+            altaRiseCommand.toJSON(), altaEventCommand.toJSON(), altaRecruitmentCommand.toJSON(),
             altaRecruitmentReportCommand.toJSON(), altaRecruitmentResetCommand.toJSON(),
           ])
-            .then(() => console.log(`/avisorise, /rec, /relatoriorec e /resetrec registrados no servidor ${ALTA_GUILD_ID}.`))
+            .then(() => console.log(`/avisorise, /evento, /rec, /relatoriorec e /resetrec registrados no servidor ${ALTA_GUILD_ID}.`))
             .catch(error => console.error(`Comandos da Alta não registrados no servidor ${ALTA_GUILD_ID}: ${errorText(error)}`));
           await refreshAltaRecruitmentAnnouncement(connected)
             .catch(error => console.error(`Aviso REC da Alta não publicado: ${errorText(error)}`));
           await applyAltaMovChatPolicy()
             .catch(error => console.error(`Política do Mov Chat não aplicada: ${errorText(error)}`));
           startAltaMovChatCleanup(connected);
+          await startAltaEventBroadcasts(connected).catch(error => console.error(`Disparos de eventos: ${errorText(error)}`));
         } else {
           console.warn(`Angel sem acesso ao servidor ${ALTA_GUILD_ID}; comandos da Alta indisponíveis nele.`);
         }
