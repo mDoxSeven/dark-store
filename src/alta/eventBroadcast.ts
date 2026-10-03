@@ -23,7 +23,7 @@ export const altaEventCommand = new SlashCommandBuilder()
     .addAttachmentOption(option => option.setName('arte').setDescription('Arte PNG, JPG, WEBP ou GIF de até 8 MB'))
     .addBooleanOption(option => option.setName('remover_arte').setDescription('Remove a arte atual do rascunho')))
   .addSubcommand(command => command.setName('testar').setDescription('Mostra a prévia somente para você.'))
-  .addSubcommand(command => command.setName('enviar').setDescription('Revisa e confirma o disparo para o cargo do evento.'))
+  .addSubcommand(command => command.setName('enviar').setDescription('Revisa e confirma o disparo para membros online do cargo.'))
   .addSubcommand(command => command.setName('status').setDescription('Mostra o rascunho e os últimos disparos.'));
 
 export function altaEventOperatorId() { return process.env.ALTA_EVENT_OPERATOR_ID?.trim() ?? ''; }
@@ -154,9 +154,12 @@ export async function handleAltaEventButton(interaction: ButtonInteraction) {
   try {
   const role = await interaction.guild.roles.fetch(ALTA_EVENT_ROLE_ID);
   if (!role) throw new Error('O cargo destinatário do evento não existe.');
-  const members = await interaction.guild.members.fetch();
-  const targets = members.filter(member => !member.user.bot && member.roles.cache.has(role.id)).map(member => member.id);
-  if (!targets.length) throw new Error('Nenhum membro humano possui o cargo destinatário.');
+  const members = await interaction.guild.members.fetch({ withPresences: true });
+  const roleMembers = members.filter(member => !member.user.bot && member.roles.cache.has(role.id));
+  const targets = roleMembers
+    .filter(member => member.presence && member.presence.status !== 'offline')
+    .map(member => member.id);
+  if (!targets.length) throw new Error('Nenhum membro online possui o cargo destinatário.');
   await interaction.deferUpdate();
   const job = await prisma.$transaction(async tx => {
     const created = await tx.altaEventBroadcast.create({ data: {
@@ -167,7 +170,8 @@ export async function handleAltaEventButton(interaction: ButtonInteraction) {
     await tx.altaEventDelivery.createMany({ data: targets.map(userId => ({ broadcastId: created.id, userId })) });
     return created;
   });
-  await interaction.editReply(altaEventStatusV2(`### Disparo iniciado\nProtocolo: \`${job.id}\`\nDestinatários: **${targets.length} membros** do cargo configurado.\n\nA conclusão chegará no seu privado.`) as never);
+  const offlineCount = roleMembers.size - targets.length;
+  await interaction.editReply(altaEventStatusV2(`### Disparo iniciado\nProtocolo: \`${job.id}\`\nDestinatários: **${targets.length} membros online** do cargo configurado.\nIgnorados por estarem offline ou invisíveis: **${offlineCount}**.\n\nA conclusão chegará no seu privado.`) as never);
   void runBroadcast(interaction.client, job.id);
   } finally { confirming.delete(confirmationKey); }
   return true;
