@@ -32,7 +32,7 @@ test('cronograma valida os dias e horários em português', () => {
   assert.equal(validLeadershipTime('25:00'), false);
   const payload = scheduleMessage([{
     id: 'entry', guildId: LEADERSHIP_GUILD_ID, day: 'sábado', time: '16:00', label: 'mov chat',
-    roleId: null, position: 0, createdAt: new Date(), updatedAt: new Date(),
+    roleId: '1542876176773681314', userId: '1002774556269891694', position: 0, createdAt: new Date(), updatedAt: new Date(),
   }]);
   const raw = JSON.stringify(payload.components);
   assert.match(raw, /Sábado/);
@@ -40,6 +40,8 @@ test('cronograma valida os dias e horários em português', () => {
   assert.match(raw, /leadership:schedule:add/);
   assert.match(raw, /leadership:schedule:remove/);
   assert.match(raw, /leadership:schedule:refresh/);
+  assert.match(raw, /Responsável/);
+  assert.match(raw, /1002774556269891694/);
 });
 
 test('painéis Liderança usam Components V2, artes e botões de fluxo', () => {
@@ -68,6 +70,7 @@ test('Angel encaminha comandos, botões e formulários da Liderança', async () 
   assert.match(module, /duration < 7 \|\| duration > 30/);
   assert.match(module, /combinedScheduleEntries/);
   assert.match(module, /prisma\.passtimeScheduleEntry\.findMany/);
+  assert.match(module, /userId: entry\.userId/);
   assert.match(module, /ensureAreaChannel/);
   const passtime = await readFile(new URL('../src/passtime/module.ts', import.meta.url), 'utf8');
   assert.match(passtime, /refreshLinkedLeadershipSchedule\(guild\.client\)/);

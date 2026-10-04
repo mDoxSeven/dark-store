@@ -173,7 +173,10 @@ export function scheduleMessage(entries: PasstimeScheduleEntry[]) {
     const remaining = items.length - visible.length;
     return [
       `**${day[0].toUpperCase()}${day.slice(1)}:**`,
-      ...visible.map(item => `• \`${item.time}\` — ${item.label}${item.userId ? ` · <@${item.userId}>` : ''}`),
+      ...visible.map(item => [
+        `• \`${item.time}\` — **${item.label}**`,
+        item.userId ? `  ↳ Responsável: <@${item.userId}>` : '  ↳ Responsável: *não registrado*',
+      ].join('\n')),
       ...(remaining ? [`-# e mais ${remaining} horário(s)`] : []),
     ].join('\n');
   });

@@ -48,6 +48,7 @@ test('cronograma oferece autoagendamento, consulta, cancelamento e atualização
   assert.match(raw, /Meus horários/);
   assert.match(raw, /Cancelar horário/);
   assert.match(raw, /1002774556269891694/);
+  assert.match(raw, /Responsável/);
 });
 
 test('painéis Passtime usam Components V2, botão cinza e artes configuráveis', () => {

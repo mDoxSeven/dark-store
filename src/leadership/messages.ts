@@ -91,6 +91,7 @@ export type LeadershipScheduleItem = {
   time: string;
   label: string;
   roleId: string | null;
+  userId?: string | null;
   position: number;
 };
 
@@ -105,7 +106,11 @@ export function scheduleMessage(entries: LeadershipScheduleItem[]) {
     const items = grouped.get(day)!.sort((a, b) => a.time.localeCompare(b.time) || a.position - b.position);
     const title = `**${dayLabels[day]}**`;
     if (!items.length) return `${title}\n\`Nenhuma atividade marcada\``;
-    return `${title}\n${items.map(item => `\`${item.time}\` - **${item.roleId ? `<@&${item.roleId}>${item.label ? ` — ${item.label}` : ''}` : item.label}**`).join('\n')}`;
+    return `${title}\n${items.map(item => {
+      const activity = item.roleId ? `<@&${item.roleId}>${item.label ? ` — ${item.label}` : ''}` : item.label;
+      const responsible = item.userId ? `\n  ↳ **Responsável:** <@${item.userId}>` : '';
+      return `\`${item.time}\` - **${activity}**${responsible}`;
+    }).join('\n')}`;
   });
   return leadershipV2([
     '# ⌛ | CRONOGRAMA',

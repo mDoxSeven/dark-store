@@ -198,6 +198,7 @@ async function combinedScheduleEntries() {
       time: entry.time,
       label: entry.label,
       roleId: passtimeArea.roleId,
+      userId: entry.userId,
       position: 10_000 + index,
     })),
     ...events,
