@@ -9,7 +9,7 @@ import type { PasstimeBank, PasstimeConfig, PasstimeScheduleEntry } from '@prism
 import { prisma } from '../lib/db.js';
 import {
   PASSTIME_ACTIVITIES, PASSTIME_ART_FALLBACKS, PASSTIME_COMMANDS, PASSTIME_DAYS, PASSTIME_GUILD_ID,
-  PASSTIME_IDS, PASSTIME_OWNER_ID, PASSTIME_SCHEDULE_REMINDER_MINUTES, PASSTIME_SCHEDULE_SLOTS,
+  PASSTIME_IDS, PASSTIME_OWNER_ID, PASSTIME_RANK_CHANNEL_ID, PASSTIME_SCHEDULE_REMINDER_MINUTES, PASSTIME_SCHEDULE_SLOTS,
   PASSTIME_USER_SCHEDULE_LIMIT,
   isPasstimeCommand, isPasstimeManager, normalizeDay, passtimeCommandName, passtimeScheduleSlot,
   passtimeScheduleTime, safeChannelName, saoPauloClock, validTime,
@@ -251,7 +251,7 @@ export async function setupPasstime(message: Message<true>) {
   const identification = await ensureTextChannel(guild, config.identificationChannelId, 'identificação', startCategory.id, memberOnly, 'Ficha e regras de identificação das matérias.', created);
   const schedule = await ensureTextChannel(guild, config.scheduleChannelId, 'cronograma', startCategory.id, memberOnly, 'Cronograma oficial da equipe Passtime.', created);
   const points = await ensureTextChannel(guild, config.pointsChannelId, 'pontuação', importantCategory.id, memberOnly, 'Tabela oficial de pontuação.', created);
-  const rank = await ensureTextChannel(guild, config.rankChannelId, 'ranking', importantCategory.id, memberOnly, 'Ranking oficial de pontos do Passtime.', created);
+  const rank = await ensureTextChannel(guild, PASSTIME_RANK_CHANNEL_ID, 'ranking', importantCategory.id, memberOnly, 'Ranking oficial de pontos do Passtime.', created);
   const team = await ensureTextChannel(guild, config.teamChannelId, 'equipe', importantCategory.id, memberOnly, 'Hierarquia da equipe Passtime.', created);
   const logs = await ensureTextChannel(guild, config.logsChannelId, 'logs-passtime', managementCategory.id, logsPrivate, 'Ações administrativas do módulo Passtime.', created);
 
@@ -319,7 +319,7 @@ async function topRankItems(guildId: string) {
 
 async function refreshRank(guild: Guild, config?: PasstimeConfig | null, fallback?: TextChannel) {
   config ??= await requireConfig();
-  const channel = fallback ?? await fetchText(guild, config.rankChannelId);
+  const channel = fallback ?? await fetchText(guild, config.rankChannelId ?? PASSTIME_RANK_CHANNEL_ID);
   if (!channel) throw new Error('Canal do ranking não está disponível. Execute `!passtime`.');
   const items = await topRankItems(guild.id);
   const id = await publishOrUpdate(
@@ -551,7 +551,7 @@ async function runPasstimeCommand(message: Message<true>) {
     return;
   }
   if (command === '!rank_passtime' || command === '!rank') {
-    await refreshRank(message.guild, await requireConfig(), await currentText(message));
+    await refreshRank(message.guild, await requireConfig());
     await message.reply({ content: 'Ranking Passtime publicado/atualizado.', allowedMentions: { repliedUser: false } });
     return;
   }

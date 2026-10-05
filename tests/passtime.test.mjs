@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
-  PASSTIME_ACTIVITIES, PASSTIME_GUILD_ID, PASSTIME_OWNER_ID, PASSTIME_SCHEDULE_SLOTS,
+  PASSTIME_ACTIVITIES, PASSTIME_GUILD_ID, PASSTIME_OWNER_ID, PASSTIME_RANK_CHANNEL_ID, PASSTIME_SCHEDULE_SLOTS,
   PASSTIME_TIME_ZONE, PASSTIME_USER_SCHEDULE_LIMIT, isPasstimeCommand, isPasstimeManager,
   normalizeDay, passtimeScheduleTime, saoPauloClock, validTime,
 } from '../src/passtime/config.ts';
@@ -21,6 +21,7 @@ const requested = [
 
 test('módulo Passtime fica isolado no servidor e usuário autorizados', () => {
   assert.equal(PASSTIME_GUILD_ID, '1506789977927712808');
+  assert.equal(PASSTIME_RANK_CHANNEL_ID, '1524346776033693716');
   assert.equal(PASSTIME_OWNER_ID, '1002774556269891694');
   assert.equal(isPasstimeManager('1002774556269891694'), true);
   assert.equal(isPasstimeManager('1516915772192985088'), true);
