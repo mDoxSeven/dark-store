@@ -30,6 +30,12 @@ export const PASSTIME_IDS = {
   scheduleActivity: 'passtime:schedule:activity',
   scheduleBookModal: 'passtime:schedule:book',
   scheduleCancel: 'passtime:schedule:cancel',
+  scheduleEditOpen: 'passtime:schedule:edit-open',
+  scheduleEditSelect: 'passtime:schedule:edit-select',
+  scheduleEditModal: 'passtime:schedule:edit-modal',
+  scheduleClearOpen: 'passtime:schedule:clear-open',
+  scheduleClearConfirm: 'passtime:schedule:clear-confirm',
+  scheduleClearCancel: 'passtime:schedule:clear-cancel',
 } as const;
 
 export const PASSTIME_COMMANDS = new Set([

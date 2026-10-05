@@ -193,6 +193,10 @@ export function scheduleMessage(entries: PasstimeScheduleEntry[]) {
         { label: 'Atualizar cronograma', description: 'Sincronizar o painel agora', value: 'refresh', emoji: { name: '🔄' } },
       ],
     }] };
+  const management = { type: 1, components: [
+    button(PASSTIME_IDS.scheduleEditOpen, 'Editar cronograma', '✏️'),
+    button(PASSTIME_IDS.scheduleClearOpen, 'Limpar cronograma', '🧹'),
+  ] };
   return {
     flags: 32768,
     allowedMentions: { parse: [], roles: [], users: [] },
@@ -205,11 +209,48 @@ export function scheduleMessage(entries: PasstimeScheduleEntry[]) {
         ...sections.map(section => text(section)),
         separator,
         menu,
+        management,
         separator,
         text('-# Passtime • Alta • Horário de Brasília • Atualização automática'),
       ],
     }],
   } as unknown as MessageCreateOptions;
+}
+
+export function scheduleEditPicker(entries: PasstimeScheduleEntry[], userId: string) {
+  return passtimeV2('## ✏️ Editar cronograma\nEscolha o horário que deseja corrigir. Você poderá alterar dia, horário, atividade e responsável.', {
+    banner: false,
+    footer: 'Controle exclusivo da gestão • Horário de Brasília',
+    components: [{ type: 1, components: [{
+      type: 3,
+      custom_id: `${PASSTIME_IDS.scheduleEditSelect}:${userId}`,
+      placeholder: 'Selecione um horário',
+      min_values: 1,
+      max_values: 1,
+      options: entries.slice(0, 25).map(entry => ({
+        label: `${entry.day} ${entry.time}`.slice(0, 100),
+        description: `${entry.label}${entry.userId ? ' • com responsável' : ' • sem responsável'}`.slice(0, 100),
+        value: entry.id,
+        emoji: { name: '✏️' },
+      })),
+    }] }],
+  });
+}
+
+export function scheduleClearConfirmation(userId: string, count: number) {
+  return passtimeV2([
+    '## ⚠️ Limpar cronograma?',
+    `Esta ação removerá **${count} horário(s)** do Passtime e atualizará o painel da Liderança.`,
+    '',
+    '**Essa ação não poderá ser desfeita.**',
+  ].join('\n'), {
+    banner: false,
+    footer: 'Controle exclusivo da gestão',
+    components: [{ type: 1, components: [
+      { type: 2, style: 4, custom_id: `${PASSTIME_IDS.scheduleClearConfirm}:${userId}`, label: 'Confirmar limpeza', emoji: { name: '🗑️' } },
+      button(`${PASSTIME_IDS.scheduleClearCancel}:${userId}`, 'Cancelar', '✖️'),
+    ] }],
+  });
 }
 
 export function scheduleDayPicker() {

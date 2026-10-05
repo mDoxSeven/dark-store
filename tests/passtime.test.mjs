@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
-  PASSTIME_ACTIVITIES, PASSTIME_GUILD_ID, PASSTIME_OWNER_ID, isPasstimeCommand, isPasstimeManager, normalizeDay, validTime,
+  PASSTIME_ACTIVITIES, PASSTIME_GUILD_ID, PASSTIME_OWNER_ID, PASSTIME_TIME_ZONE,
+  isPasstimeCommand, isPasstimeManager, normalizeDay, saoPauloClock, validTime,
 } from '../src/passtime/config.ts';
 import { PASSTIME_IMPLEMENTED_COMMANDS } from '../src/passtime/module.ts';
 import { bankRequestMessage, identificationMessage, pointsMessage, scheduleMessage, teamMessage } from '../src/passtime/messages.ts';
@@ -32,6 +33,10 @@ test('cronograma aceita dias em português e horário de 24 horas', () => {
   assert.equal(normalizeDay('sabado'), 'sábado');
   assert.equal(validTime('23:59'), true);
   assert.equal(validTime('24:00'), false);
+  assert.equal(PASSTIME_TIME_ZONE, 'America/Sao_Paulo');
+  assert.deepEqual(saoPauloClock(new Date('2026-10-05T02:30:00.000Z')), {
+    date: '2026-10-04', time: '23:30', day: 'domingo',
+  });
 });
 
 test('cronograma oferece autoagendamento, consulta, cancelamento e atualização', () => {
@@ -47,6 +52,8 @@ test('cronograma oferece autoagendamento, consulta, cancelamento e atualização
   assert.match(raw, /Agendar atividade/);
   assert.match(raw, /Meus horários/);
   assert.match(raw, /Cancelar horário/);
+  assert.match(raw, /Editar cronograma/);
+  assert.match(raw, /Limpar cronograma/);
   assert.match(raw, /1002774556269891694/);
   assert.match(raw, /Responsável/);
 });
@@ -93,5 +100,8 @@ test('agendamento atualiza o painel e dispara alertas automáticos', async () =>
   assert.match(source, /entry\.reminderMinutes \* 60_000/);
   assert.match(source, /lastReminderKey/);
   assert.match(source, /lastStartKey/);
+  assert.match(source, /scheduleEditModal/);
+  assert.match(source, /scheduleClearConfirm/);
+  assert.match(source, /await refreshLinkedLeadershipSchedule\(guild\.client\)/);
   assert.match(source, /if \(running\) return/);
 });
