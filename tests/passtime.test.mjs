@@ -8,14 +8,15 @@ import {
 } from '../src/passtime/config.ts';
 import { PASSTIME_IMPLEMENTED_COMMANDS } from '../src/passtime/module.ts';
 import {
-  bankRequestMessage, identificationMessage, pointsMessage, scheduleActivityPicker, scheduleDayPicker,
-  scheduleMessage, scheduleSlotPicker, teamMessage,
+  bankRequestMessage, identificationMessage, pointsMessage, rankResetConfirmation, rankingMessage,
+  scheduleActivityPicker, scheduleDayPicker, scheduleMessage, scheduleSlotPicker, teamMessage,
 } from '../src/passtime/messages.ts';
 
 const requested = [
   '!apelido', '!embed', '!logs', '!verificacao', '!clear', '!membersrole', '!anuncio', '!banca',
   '!banca_apagar', '!banca_arquivar', '!banca_desarquivar', '!cronograma', '!lembrete',
   '!atualizar_cronograma', '!limpar_cronograma', '!editar_horarios',
+  '!rank_passtime', '!rank', '!pontos', '!dar_pontos', '!remover_pontos', '!resetar_rank',
 ];
 
 test('módulo Passtime fica isolado no servidor e usuário autorizados', () => {
@@ -100,6 +101,23 @@ test('painéis Passtime usam Components V2, botão cinza e artes configuráveis'
   assert.match(JSON.stringify(teamMessage({ leaderId: null, deputyLeaderId: null, managerId: null, supervisorId: null }, presentation).components), /team\.png/);
 });
 
+test('ranking Passtime exibe colocação, consulta individual e reset protegido', () => {
+  const payload = rankingMessage([
+    { userId: '1002774556269891694', points: 40 },
+    { userId: '1516915772192985088', points: 25 },
+  ], new Date('2026-10-05T12:00:00.000Z'));
+  const raw = JSON.stringify(payload.components);
+  assert.match(raw, /Ranking Passtime/);
+  assert.match(raw, /1002774556269891694/);
+  assert.match(raw, /40 pts/);
+  assert.match(raw, /passtime:rank:mine/);
+  assert.match(raw, /passtime:rank:refresh/);
+
+  const reset = JSON.stringify(rankResetConfirmation('1002774556269891694', 2, 65).components);
+  assert.match(reset, /passtime:rank:reset-confirm:1002774556269891694/);
+  assert.match(reset, /65 ponto/);
+});
+
 test('integração do Angel encaminha comandos, botões, formulários e lembretes', async () => {
   const source = await readFile(new URL('../src/discord/bot.ts', import.meta.url), 'utf8');
   assert.match(source, /handlePasstimeCommand\(message\)/);
@@ -108,11 +126,12 @@ test('integração do Angel encaminha comandos, botões, formulários e lembrete
   assert.match(source, /handlePasstimeSelect\(interaction\)/);
   assert.match(source, /startPasstimeReminders\(connected\)/);
   const schema = await readFile(new URL('../prisma/schema.prisma', import.meta.url), 'utf8');
-  for (const model of ['PasstimeConfig', 'PasstimeBank', 'PasstimeScheduleEntry', 'PasstimeReminder']) {
+  for (const model of ['PasstimeConfig', 'PasstimeBank', 'PasstimeScheduleEntry', 'PasstimeReminder', 'PasstimeScore', 'PasstimePointLog']) {
     assert.match(schema, new RegExp(`model ${model}`));
   }
   assert.match(schema, /lastReminderKey\s+String\?/);
   assert.match(schema, /lastStartKey\s+String\?/);
+  assert.match(schema, /rankCycleStartedAt\s+DateTime/);
 });
 
 test('agendamento atualiza o painel e dispara alertas automáticos', async () => {
@@ -129,4 +148,13 @@ test('agendamento atualiza o painel e dispara alertas automáticos', async () =>
   assert.match(source, /PASSTIME_USER_SCHEDULE_LIMIT/);
   assert.match(source, /scheduleBookingLocks/);
   assert.match(source, /if \(running\) return/);
+});
+
+test('ranking persiste pontos, histórico e sincroniza o painel', async () => {
+  const source = await readFile(new URL('../src/passtime/module.ts', import.meta.url), 'utf8');
+  assert.match(source, /prisma\.passtimeScore/);
+  assert.match(source, /prisma\.passtimePointLog/);
+  assert.match(source, /changePasstimePoints/);
+  assert.match(source, /refreshRank/);
+  assert.match(source, /rankResetConfirm/);
 });

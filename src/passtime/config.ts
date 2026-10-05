@@ -37,12 +37,17 @@ export const PASSTIME_IDS = {
   scheduleClearOpen: 'passtime:schedule:clear-open',
   scheduleClearConfirm: 'passtime:schedule:clear-confirm',
   scheduleClearCancel: 'passtime:schedule:clear-cancel',
+  rankRefresh: 'passtime:rank:refresh',
+  rankMine: 'passtime:rank:mine',
+  rankResetConfirm: 'passtime:rank:reset-confirm',
+  rankResetCancel: 'passtime:rank:reset-cancel',
 } as const;
 
 export const PASSTIME_COMMANDS = new Set([
   '!passtime', '!apelido', '!embed', '!logs', '!verificacao', '!clear', '!membersrole', '!anuncio',
   '!banca', '!banca_apagar', '!banca_arquivar', '!banca_desarquivar', '!cronograma', '!lembrete',
   '!atualizar_cronograma', '!limpar_cronograma', '!editar_horarios', '!equipe',
+  '!rank_passtime', '!rank', '!pontos', '!dar_pontos', '!remover_pontos', '!resetar_rank',
 ]);
 
 export const PASSTIME_DAYS = ['segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado', 'domingo'] as const;

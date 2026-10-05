@@ -258,12 +258,14 @@ model PasstimeConfig {
   verificationChannelId String?
   identificationChannelId String?
   pointsChannelId      String?
+  rankChannelId        String?
   teamChannelId        String?
   scheduleChannelId    String?
   requestMessageId     String?
   verificationMessageId String?
   identificationMessageId String?
   pointsMessageId      String?
+  rankMessageId        String?
   teamMessageId        String?
   scheduleMessageId    String?
   requestBannerUrl     String?
@@ -275,11 +277,41 @@ model PasstimeConfig {
   managerId            String?
   supervisorId         String?
   nickname             String?
+  rankCycleStartedAt   DateTime                @default(now())
   createdAt            DateTime                @default(now())
   updatedAt            DateTime                @updatedAt
   banks                PasstimeBank[]
   scheduleEntries      PasstimeScheduleEntry[]
   reminders            PasstimeReminder[]
+  scores               PasstimeScore[]
+  pointLogs            PasstimePointLog[]
+}
+
+model PasstimeScore {
+  id        String         @id @default(cuid())
+  guildId   String
+  userId    String
+  points    Int            @default(0)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  config    PasstimeConfig @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  @@unique([guildId, userId])
+  @@index([guildId, points])
+}
+
+model PasstimePointLog {
+  id        String         @id @default(cuid())
+  guildId   String
+  userId    String
+  amount    Int
+  reason    String
+  actorId   String
+  createdAt DateTime       @default(now())
+  config    PasstimeConfig @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  @@index([guildId, userId, createdAt])
+  @@index([guildId, createdAt])
 }
 
 model PasstimeBank {

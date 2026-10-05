@@ -16,6 +16,8 @@ export type PasstimePresentation = {
   teamBannerUrl?: string | null;
 };
 
+export type PasstimeRankItem = { userId: string; points: number };
+
 const separator = { type: 14, divider: true, spacing: 1 };
 const text = (content: string) => ({ type: 10, content });
 const button = (customId: string, label: string, emoji?: string) => ({
@@ -121,6 +123,45 @@ export function pointsMessage(presentation: PasstimePresentation = {}) {
     '• **2º lugar** — 10 pts',
     '• **3º lugar** — 3 pts',
   ].join('\n'), { bannerUrl: presentation.pointsBannerUrl, footer: 'Passtime • Alta' });
+}
+
+export function rankingMessage(items: PasstimeRankItem[], cycleStartedAt: Date) {
+  const medals = ['🥇', '🥈', '🥉'];
+  const ranking = items.length
+    ? items.slice(0, 20).map((item, index) => `${medals[index] ?? `**${index + 1}º**`} <@${item.userId}> — **${item.points} pts**`).join('\n')
+    : '*O ranking deste ciclo ainda está vazio.*';
+  const cycle = Math.floor(cycleStartedAt.getTime() / 1000);
+  return passtimeV2([
+    '# 🏆 | Ranking Passtime',
+    '*Destaques do ciclo atual.*',
+    '',
+    ranking,
+    '',
+    `-# Ciclo iniciado em <t:${cycle}:d> às <t:${cycle}:t>.`,
+  ].join('\n'), {
+    banner: false,
+    footer: 'Passtime • Alta • Atualização automática',
+    components: [{ type: 1, components: [
+      button(PASSTIME_IDS.rankMine, 'Meus pontos', '✨'),
+      button(PASSTIME_IDS.rankRefresh, 'Atualizar ranking', '🔄'),
+    ] }],
+  });
+}
+
+export function rankResetConfirmation(userId: string, members: number, points: number) {
+  return passtimeV2([
+    '## ⚠️ Resetar ranking?',
+    `Esta ação zerará **${points} ponto(s)** de **${members} membro(s)** e iniciará um novo ciclo.`,
+    '',
+    '**O histórico de alterações será preservado para auditoria.**',
+  ].join('\n'), {
+    banner: false,
+    footer: 'Controle exclusivo da gestão',
+    components: [{ type: 1, components: [
+      { type: 2, style: 4, custom_id: `${PASSTIME_IDS.rankResetConfirm}:${userId}`, label: 'Confirmar reset', emoji: { name: '🗑️' } },
+      button(`${PASSTIME_IDS.rankResetCancel}:${userId}`, 'Cancelar', '✖️'),
+    ] }],
+  });
 }
 
 const member = (id: string | null) => id ? `<@${id}>` : '*Não definido*';

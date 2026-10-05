@@ -17,8 +17,8 @@ import {
 import {
   announcementMessage, bankRequestMessage, bankWelcomeMessage, editorLauncherMessage,
   identificationMessage, passtimeV2, pointsMessage, scheduleActivityPicker, scheduleCancelPicker,
-  scheduleClearConfirmation, scheduleDayPicker, scheduleEditPicker, scheduleMessage, scheduleSlotPicker,
-  teamMessage, verificationMessage,
+  rankResetConfirmation, rankingMessage, scheduleClearConfirmation, scheduleDayPicker, scheduleEditPicker,
+  scheduleMessage, scheduleSlotPicker, teamMessage, verificationMessage,
   type PasstimePresentation,
 } from './messages.js';
 import { refreshLinkedLeadershipSchedule } from '../leadership/module.js';
@@ -251,6 +251,7 @@ export async function setupPasstime(message: Message<true>) {
   const identification = await ensureTextChannel(guild, config.identificationChannelId, 'identificação', startCategory.id, memberOnly, 'Ficha e regras de identificação das matérias.', created);
   const schedule = await ensureTextChannel(guild, config.scheduleChannelId, 'cronograma', startCategory.id, memberOnly, 'Cronograma oficial da equipe Passtime.', created);
   const points = await ensureTextChannel(guild, config.pointsChannelId, 'pontuação', importantCategory.id, memberOnly, 'Tabela oficial de pontuação.', created);
+  const rank = await ensureTextChannel(guild, config.rankChannelId, 'ranking', importantCategory.id, memberOnly, 'Ranking oficial de pontos do Passtime.', created);
   const team = await ensureTextChannel(guild, config.teamChannelId, 'equipe', importantCategory.id, memberOnly, 'Hierarquia da equipe Passtime.', created);
   const logs = await ensureTextChannel(guild, config.logsChannelId, 'logs-passtime', managementCategory.id, logsPrivate, 'Ações administrativas do módulo Passtime.', created);
 
@@ -258,7 +259,8 @@ export async function setupPasstime(message: Message<true>) {
     memberRoleId: memberRole.id, decoratorRoleId: decoratorRole.id, correctorRoleId: correctorRole.id,
     managementRoleId: managementRole.id, bankCategoryId: bankCategory.id, archiveCategoryId: archiveCategory.id,
     verificationChannelId: verification.id, requestChannelId: request.id, identificationChannelId: identification.id,
-    scheduleChannelId: schedule.id, pointsChannelId: points.id, teamChannelId: team.id, logsChannelId: logs.id,
+    scheduleChannelId: schedule.id, pointsChannelId: points.id, rankChannelId: rank.id,
+    teamChannelId: team.id, logsChannelId: logs.id,
   } });
   const [requestBannerUrl, identificationBannerUrl, pointsBannerUrl, teamBannerUrl] = await Promise.all([
     discoverChannelArt(request, config.requestBannerUrl, PASSTIME_ART_FALLBACKS.request),
@@ -271,16 +273,19 @@ export async function setupPasstime(message: Message<true>) {
   } });
   const presentation = await passtimePresentation(guild, config);
   const entries = await prisma.passtimeScheduleEntry.findMany({ where: { guildId: guild.id }, orderBy: [{ day: 'asc' }, { time: 'asc' }] });
-  const [verificationMessageId, requestMessageId, identificationMessageId, pointsMessageId, teamMessageId, scheduleMessageId] = await Promise.all([
+  const ranking = await topRankItems(guild.id);
+  const [verificationMessageId, requestMessageId, identificationMessageId, pointsMessageId, rankMessageId, teamMessageId, scheduleMessageId] = await Promise.all([
     publishOrUpdate(verification, config.verificationMessageId, verificationMessage()),
     publishOrUpdate(request, config.requestMessageId, bankRequestMessage(presentation)),
     publishOrUpdate(identification, config.identificationMessageId, identificationMessage(presentation)),
     publishOrUpdate(points, config.pointsMessageId, pointsMessage(presentation)),
+    publishOrUpdate(rank, config.rankMessageId, rankingMessage(ranking, config.rankCycleStartedAt)),
     publishOrUpdate(team, config.teamMessageId, teamMessage(config, presentation)),
     publishOrUpdate(schedule, config.scheduleMessageId, scheduleMessage(entries)),
   ]);
   config = await prisma.passtimeConfig.update({ where: { guildId: guild.id }, data: {
-    verificationMessageId, requestMessageId, identificationMessageId, pointsMessageId, teamMessageId, scheduleMessageId,
+    verificationMessageId, requestMessageId, identificationMessageId, pointsMessageId, rankMessageId,
+    teamMessageId, scheduleMessageId,
   } });
   await logPasstime(guild, `Estrutura sincronizada por <@${message.author.id}>. ${created.length ? `Criado: ${created.join(', ')}.` : 'Nenhum item duplicado.'}`);
   await refreshLinkedLeadershipSchedule(guild.client).catch(error => console.error(`cronograma Liderança: ${commandError(error)}`));
@@ -300,6 +305,32 @@ async function refreshSchedule(guild: Guild, config?: PasstimeConfig | null, fal
   const id = await publishOrUpdate(channel, channel.id === config.scheduleChannelId ? config.scheduleMessageId : null, scheduleMessage(entries));
   await prisma.passtimeConfig.update({ where: { guildId: guild.id }, data: { scheduleChannelId: channel.id, scheduleMessageId: id } });
   await refreshLinkedLeadershipSchedule(guild.client).catch(error => console.error(`cronograma Liderança: ${commandError(error)}`));
+  return id;
+}
+
+async function topRankItems(guildId: string) {
+  return prisma.passtimeScore.findMany({
+    where: { guildId, points: { gt: 0 } },
+    orderBy: [{ points: 'desc' }, { updatedAt: 'asc' }],
+    take: 20,
+    select: { userId: true, points: true },
+  });
+}
+
+async function refreshRank(guild: Guild, config?: PasstimeConfig | null, fallback?: TextChannel) {
+  config ??= await requireConfig();
+  const channel = fallback ?? await fetchText(guild, config.rankChannelId);
+  if (!channel) throw new Error('Canal do ranking não está disponível. Execute `!passtime`.');
+  const items = await topRankItems(guild.id);
+  const id = await publishOrUpdate(
+    channel,
+    channel.id === config.rankChannelId ? config.rankMessageId : null,
+    rankingMessage(items, config.rankCycleStartedAt),
+  );
+  await prisma.passtimeConfig.update({
+    where: { guildId: guild.id },
+    data: { rankChannelId: channel.id, rankMessageId: id },
+  });
   return id;
 }
 
@@ -412,6 +443,49 @@ async function syncMemberRole(message: Message<true>, role?: Role | null) {
 const parseTargetUser = (message: Message<true>, raw?: string) =>
   message.mentions.users.first()?.id ?? raw?.match(/^<@!?(\d{17,20})>$/)?.[1] ?? raw?.match(/^(\d{17,20})$/)?.[1] ?? null;
 
+async function changePasstimePoints(
+  message: Message<true>,
+  mode: 'add' | 'remove',
+  targetId: string,
+  requestedAmount: number,
+  reason: string,
+) {
+  const target = await message.guild.members.fetch(targetId).catch(() => null);
+  if (!target || target.user.bot) throw new Error('Escolha um membro válido do servidor.');
+  const result = await prisma.$transaction(async tx => {
+    const current = await tx.passtimeScore.findUnique({
+      where: { guildId_userId: { guildId: message.guild.id, userId: targetId } },
+    });
+    const before = current?.points ?? 0;
+    const actualAmount = mode === 'add' ? requestedAmount : Math.min(requestedAmount, before);
+    if (mode === 'remove' && actualAmount === 0) throw new Error('Esse membro não possui pontos para remover.');
+    const points = mode === 'add' ? before + actualAmount : before - actualAmount;
+    await tx.passtimeScore.upsert({
+      where: { guildId_userId: { guildId: message.guild.id, userId: targetId } },
+      create: { guildId: message.guild.id, userId: targetId, points },
+      update: { points },
+    });
+    await tx.passtimePointLog.create({ data: {
+      guildId: message.guild.id,
+      userId: targetId,
+      amount: mode === 'add' ? actualAmount : -actualAmount,
+      reason,
+      actorId: message.author.id,
+    } });
+    return { before, points, actualAmount };
+  });
+  await refreshRank(message.guild).catch(error => console.error(`ranking Passtime: ${commandError(error)}`));
+  const verb = mode === 'add' ? 'adicionados a' : 'removidos de';
+  await message.reply({
+    content: `**${result.actualAmount} ponto(s)** ${verb} <@${targetId}>. Saldo atual: **${result.points} pts**.`,
+    allowedMentions: { users: [] },
+  });
+  await logPasstime(message.guild, [
+    `<@${message.author.id}> ${mode === 'add' ? 'adicionou' : 'removeu'} **${result.actualAmount} ponto(s)** ${mode === 'add' ? 'para' : 'de'} <@${targetId}>.`,
+    `Motivo: **${reason}**. Saldo: **${result.before} → ${result.points}**.`,
+  ].join('\n'));
+}
+
 async function handleTeamCommand(message: Message<true>, args: string[]) {
   let config = await requireConfig();
   if (!args.length) {
@@ -464,7 +538,9 @@ async function runPasstimeCommand(message: Message<true>) {
   const raw = message.content.trim();
   const [rawCommand, ...args] = raw.split(/\s+/);
   const command = rawCommand.toLocaleLowerCase('pt-BR');
-  if (command !== '!passtime') await requireController(message.member);
+  const memberCommands = new Set(['!pontos']);
+  if (command !== '!passtime' && !memberCommands.has(command)) await requireController(message.member);
+  if (memberCommands.has(command)) await requireScheduleMember(message.guild, message.author.id);
 
   if (command === '!passtime') {
     const result = await setupPasstime(message);
@@ -472,6 +548,61 @@ async function runPasstimeCommand(message: Message<true>) {
       content: result.created.length ? `Estrutura Passtime pronta. Criado: ${result.created.join(', ')}.` : 'Estrutura Passtime sincronizada; nenhum canal ou cargo foi duplicado.',
       allowedMentions: { repliedUser: false },
     });
+    return;
+  }
+  if (command === '!rank_passtime' || command === '!rank') {
+    await refreshRank(message.guild, await requireConfig(), await currentText(message));
+    await message.reply({ content: 'Ranking Passtime publicado/atualizado.', allowedMentions: { repliedUser: false } });
+    return;
+  }
+  if (command === '!pontos') {
+    const requestedId = parseTargetUser(message, args[0]);
+    const userId = requestedId ?? message.author.id;
+    if (userId !== message.author.id && !await isController(message.member)) {
+      throw new Error('Você pode consultar somente os seus próprios pontos.');
+    }
+    const [score, history] = await Promise.all([
+      prisma.passtimeScore.findUnique({ where: { guildId_userId: { guildId: message.guild.id, userId } } }),
+      prisma.passtimePointLog.findMany({
+        where: { guildId: message.guild.id, userId }, orderBy: { createdAt: 'desc' }, take: 5,
+      }),
+    ]);
+    const movements = history.length
+      ? history.map(item => `${item.amount > 0 ? '➕' : '➖'} **${Math.abs(item.amount)}** — ${item.reason} · <t:${Math.floor(item.createdAt.getTime() / 1000)}:d>`).join('\n')
+      : '*Nenhuma alteração registrada neste ciclo.*';
+    await message.reply(passtimeV2([
+      `## ✨ Pontos de <@${userId}>`,
+      `Saldo atual: **${score?.points ?? 0} pts**`,
+      '',
+      '**Últimas alterações:**',
+      movements,
+    ].join('\n'), { banner: false, footer: 'Passtime • Alta' }));
+    return;
+  }
+  if (command === '!dar_pontos' || command === '!remover_pontos') {
+    await requireConfig();
+    const targetId = parseTargetUser(message, args[0]);
+    const amount = Number.parseInt(args[1] ?? '', 10);
+    if (!targetId || !Number.isInteger(amount) || amount < 1 || amount > 1000) {
+      throw new Error(`Use \`${command} @membro quantidade motivo\` (de 1 a 1000).`);
+    }
+    const reason = args.slice(2).join(' ').trim().slice(0, 200) || 'Ajuste da gestão';
+    await changePasstimePoints(message, command === '!dar_pontos' ? 'add' : 'remove', targetId, amount, reason);
+    return;
+  }
+  if (command === '!resetar_rank') {
+    await requireConfig();
+    const summary = await prisma.passtimeScore.aggregate({
+      where: { guildId: message.guild.id, points: { gt: 0 } },
+      _count: { _all: true },
+      _sum: { points: true },
+    });
+    if (!summary._count._all) throw new Error('O ranking já está vazio.');
+    await message.reply(rankResetConfirmation(
+      message.author.id,
+      summary._count._all,
+      summary._sum.points ?? 0,
+    ));
     return;
   }
   if (command === '!apelido') {
@@ -659,6 +790,36 @@ export async function handlePasstimeButton(interaction: ButtonInteraction) {
     await interaction.showModal(modal);
     return true;
   }
+  if (interaction.customId === PASSTIME_IDS.rankMine) {
+    await requireScheduleMember(interaction.guild, interaction.user.id);
+    const [score, history] = await Promise.all([
+      prisma.passtimeScore.findUnique({
+        where: { guildId_userId: { guildId: interaction.guild.id, userId: interaction.user.id } },
+      }),
+      prisma.passtimePointLog.findMany({
+        where: { guildId: interaction.guild.id, userId: interaction.user.id },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+      }),
+    ]);
+    const movements = history.length
+      ? history.map(item => `${item.amount > 0 ? '➕' : '➖'} **${Math.abs(item.amount)}** — ${item.reason} · <t:${Math.floor(item.createdAt.getTime() / 1000)}:d>`).join('\n')
+      : '*Nenhuma alteração registrada.*';
+    await interaction.reply(ephemeralV2(passtimeV2([
+      '## ✨ Meus pontos',
+      `Você possui **${score?.points ?? 0} pts** no ciclo atual.`,
+      '',
+      '**Últimas alterações:**',
+      movements,
+    ].join('\n'), { banner: false, footer: 'Passtime • Alta' })) as any);
+    return true;
+  }
+  if (interaction.customId === PASSTIME_IDS.rankRefresh) {
+    await requireScheduleMember(interaction.guild, interaction.user.id);
+    await refreshRank(interaction.guild);
+    await interaction.reply({ content: 'Ranking atualizado com sucesso.', flags: MessageFlags.Ephemeral });
+    return true;
+  }
 
   if (interaction.customId === PASSTIME_IDS.scheduleEditOpen) {
     const member = await interaction.guild.members.fetch(interaction.user.id);
@@ -685,6 +846,35 @@ export async function handlePasstimeButton(interaction: ButtonInteraction) {
     return true;
   }
   if (!await isController(await interaction.guild.members.fetch(interaction.user.id))) throw new Error('Somente a gestão pode usar este editor.');
+  if (interaction.customId.startsWith(`${PASSTIME_IDS.rankResetCancel}:`)) {
+    const payload = passtimeV2('## Reset cancelado\nNenhuma pontuação foi alterada.', {
+      banner: false, footer: 'Passtime • Alta',
+    });
+    await interaction.update({ components: payload.components } as any);
+    return true;
+  }
+  if (interaction.customId.startsWith(`${PASSTIME_IDS.rankResetConfirm}:`)) {
+    await interaction.deferUpdate();
+    const now = new Date();
+    const reset = await prisma.$transaction(async tx => {
+      const result = await tx.passtimeScore.updateMany({
+        where: { guildId: interaction.guild.id, points: { gt: 0 } },
+        data: { points: 0 },
+      });
+      await tx.passtimeConfig.update({
+        where: { guildId: interaction.guild.id },
+        data: { rankCycleStartedAt: now },
+      });
+      return result;
+    });
+    await refreshRank(interaction.guild);
+    const payload = passtimeV2(`## ✅ Ranking resetado\n**${reset.count} membro(s)** foram zerados e um novo ciclo foi iniciado.`, {
+      banner: false, footer: 'Passtime • Alta',
+    });
+    await interaction.editReply({ components: payload.components, attachments: [] } as any);
+    await logPasstime(interaction.guild, `<@${interaction.user.id}> resetou o ranking Passtime. **${reset.count} membro(s)** zerado(s).`);
+    return true;
+  }
   if (interaction.customId.startsWith(`${PASSTIME_IDS.scheduleClearCancel}:`)) {
     const payload = passtimeV2('## Limpeza cancelada\nNenhum horário foi removido.', {
       banner: false, footer: 'Passtime • Alta',
