@@ -27,6 +27,7 @@ export const PASSTIME_IDS = {
   scheduleModal: 'passtime:schedule:modal',
   scheduleAction: 'passtime:schedule:action',
   scheduleDay: 'passtime:schedule:day',
+  scheduleSlot: 'passtime:schedule:slot',
   scheduleActivity: 'passtime:schedule:activity',
   scheduleBookModal: 'passtime:schedule:book',
   scheduleCancel: 'passtime:schedule:cancel',
@@ -57,6 +58,20 @@ export const PASSTIME_ACTIVITIES = [
 ] as const;
 
 export const PASSTIME_SCHEDULE_REMINDER_MINUTES = 120;
+export const PASSTIME_USER_SCHEDULE_LIMIT = 2;
+
+export const PASSTIME_SCHEDULE_SLOTS = [
+  { key: 'manha', label: 'Manhã', start: '09:30', end: '11:30', emoji: '🌤️' },
+  { key: 'tarde-1', label: 'Tarde ¹', start: '12:00', end: '14:00', emoji: '☀️' },
+  { key: 'tarde-2', label: 'Tarde ²', start: '14:30', end: '16:30', emoji: '🌇' },
+  { key: 'anoitecer', label: 'Anoitecer', start: '17:00', end: '19:00', emoji: '🌙' },
+] as const;
+
+export const passtimeScheduleSlot = (value: string) => PASSTIME_SCHEDULE_SLOTS.find(slot => slot.key === value || slot.start === value) ?? null;
+export const passtimeScheduleTime = (value: string) => {
+  const slot = passtimeScheduleSlot(value);
+  return slot ? `${slot.start.replace(':', 'h')} – ${slot.end.replace(':', 'h')}` : value;
+};
 
 const dayAliases: Record<string, string> = {
   seg: 'segunda', segunda: 'segunda', 'segunda-feira': 'segunda',

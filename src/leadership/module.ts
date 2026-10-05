@@ -13,7 +13,7 @@ import {
   LEADERSHIP_VERIFIED_ROLE_ID, isLeadershipCommand, leadershipCommandName,
   normalizeLeadershipDay, safeLeadershipName, validLeadershipTime,
 } from './config.js';
-import { PASSTIME_GUILD_ID } from '../passtime/config.js';
+import { PASSTIME_GUILD_ID, passtimeScheduleTime } from '../passtime/config.js';
 import {
   closedReviewMessage, explanationMessage, formPanel, reviewMessage, scheduleMessage,
   verificationMessage,
@@ -196,6 +196,7 @@ async function combinedScheduleEntries() {
       id: `passtime:${entry.id}`,
       day: entry.day,
       time: entry.time,
+      timeLabel: passtimeScheduleTime(entry.time),
       label: entry.label,
       roleId: passtimeArea.roleId,
       userId: entry.userId,

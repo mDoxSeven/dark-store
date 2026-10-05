@@ -1,6 +1,9 @@
 import type { MessageCreateOptions } from 'discord.js';
 import type { PasstimeConfig, PasstimeScheduleEntry } from '@prisma/client';
-import { PASSTIME_ACCENT, PASSTIME_IDS, PASSTIME_DAYS } from './config.js';
+import {
+  PASSTIME_ACCENT, PASSTIME_DAYS, PASSTIME_IDS, PASSTIME_SCHEDULE_SLOTS,
+  PASSTIME_USER_SCHEDULE_LIMIT, passtimeScheduleSlot, passtimeScheduleTime,
+} from './config.js';
 
 type ApiComponent = Record<string, unknown>;
 
@@ -174,7 +177,7 @@ export function scheduleMessage(entries: PasstimeScheduleEntry[]) {
     return [
       `**${day[0].toUpperCase()}${day.slice(1)}:**`,
       ...visible.map(item => [
-        `• \`${item.time}\` — **${item.label}**`,
+        `• **${passtimeScheduleSlot(item.time)?.label ?? 'Horário'}** · \`${passtimeScheduleTime(item.time)}\` — **${item.label}**`,
         item.userId ? `  ↳ Responsável: <@${item.userId}>` : '  ↳ Responsável: *não registrado*',
       ].join('\n')),
       ...(remaining ? [`-# e mais ${remaining} horário(s)`] : []),
@@ -228,7 +231,7 @@ export function scheduleEditPicker(entries: PasstimeScheduleEntry[], userId: str
       min_values: 1,
       max_values: 1,
       options: entries.slice(0, 25).map(entry => ({
-        label: `${entry.day} ${entry.time}`.slice(0, 100),
+        label: `${entry.day} ${passtimeScheduleTime(entry.time)}`.slice(0, 100),
         description: `${entry.label}${entry.userId ? ' • com responsável' : ' • sem responsável'}`.slice(0, 100),
         value: entry.id,
         emoji: { name: '✏️' },
@@ -253,10 +256,21 @@ export function scheduleClearConfirmation(userId: string, count: number) {
   });
 }
 
-export function scheduleDayPicker() {
-  return passtimeV2('## 🗓️ Escolha o dia\nSelecione o dia em que deseja assumir uma atividade.', {
+export function scheduleDayPicker(entries: PasstimeScheduleEntry[] = [], bankChannelId?: string | null) {
+  const current = entries.length
+    ? entries.map(entry => `• **${entry.day}** · ${passtimeScheduleTime(entry.time)} — ${entry.label}`).join('\n')
+    : '*Nenhuma matéria reservada.*';
+  return passtimeV2([
+    '## 🗓️ Escolha o dia',
+    bankChannelId ? `Sua banca vinculada: <#${bankChannelId}>.` : 'Sua reserva será vinculada automaticamente ao seu usuário.',
+    '',
+    `**Suas matérias (${entries.length}/${PASSTIME_USER_SCHEDULE_LIMIT}):**`,
+    current,
+    '',
+    'Selecione o dia para visualizar somente os horários disponíveis.',
+  ].join('\n'), {
     banner: false,
-    footer: 'Passtime • Alta • Etapa 1 de 3',
+    footer: 'Passtime • Alta • Etapa 1 de 4 • Horário de Brasília',
     components: [{ type: 1, components: [{
       type: 3,
       custom_id: PASSTIME_IDS.scheduleDay,
@@ -272,15 +286,37 @@ export function scheduleDayPicker() {
   });
 }
 
-export function scheduleActivityPicker(dayIndex: number, activities: ReadonlyArray<{ value: string; label: string; description: string; emoji: string }>) {
+export function scheduleSlotPicker(dayIndex: number, occupiedTimes: ReadonlySet<string>) {
   const day = PASSTIME_DAYS[dayIndex];
-  return passtimeV2(`## 📝 Escolha a atividade\nDia selecionado: **${day?.[0].toUpperCase()}${day?.slice(1)}**.`, {
+  const available = PASSTIME_SCHEDULE_SLOTS.filter(slot => !occupiedTimes.has(slot.start));
+  return passtimeV2(`## ⏰ Escolha o horário\nDia selecionado: **${day?.[0].toUpperCase()}${day?.slice(1)}**.\n\nOs horários ocupados não aparecem na lista.`, {
     banner: false,
-    footer: 'Passtime • Alta • Etapa 2 de 3',
+    footer: 'Passtime • Alta • Etapa 2 de 4 • Horário de Brasília',
     components: [{ type: 1, components: [{
       type: 3,
-      custom_id: `${PASSTIME_IDS.scheduleActivity}:${dayIndex}`,
-      placeholder: 'Escolha a atividade',
+      custom_id: `${PASSTIME_IDS.scheduleSlot}:${dayIndex}`,
+      placeholder: 'Selecione um horário disponível',
+      min_values: 1,
+      max_values: 1,
+      options: available.map(slot => ({
+        label: `${slot.start.replace(':', 'h')} – ${slot.end.replace(':', 'h')} · ${slot.label}`,
+        value: slot.key,
+        emoji: { name: slot.emoji },
+      })),
+    }] }],
+  });
+}
+
+export function scheduleActivityPicker(dayIndex: number, slotKey: string, activities: ReadonlyArray<{ value: string; label: string; description: string; emoji: string }>) {
+  const day = PASSTIME_DAYS[dayIndex];
+  const slot = passtimeScheduleSlot(slotKey);
+  return passtimeV2(`## 📝 Escolha a matéria\n**Dia:** ${day?.[0].toUpperCase()}${day?.slice(1)}\n**Horário:** ${slot ? `${slot.start.replace(':', 'h')} – ${slot.end.replace(':', 'h')} · ${slot.label}` : 'inválido'}`, {
+    banner: false,
+    footer: 'Passtime • Alta • Etapa 3 de 4',
+    components: [{ type: 1, components: [{
+      type: 3,
+      custom_id: `${PASSTIME_IDS.scheduleActivity}:${dayIndex}:${slotKey}`,
+      placeholder: 'Escolha a matéria',
       min_values: 1,
       max_values: 1,
       options: activities.map(activity => ({
@@ -304,7 +340,7 @@ export function scheduleCancelPicker(entries: PasstimeScheduleEntry[]) {
       min_values: 1,
       max_values: 1,
       options: entries.slice(0, 25).map(entry => ({
-        label: `${entry.day} ${entry.time}`.slice(0, 100),
+        label: `${entry.day} ${passtimeScheduleTime(entry.time)}`.slice(0, 100),
         description: entry.label.slice(0, 100),
         value: entry.id,
         emoji: { name: '🗑️' },

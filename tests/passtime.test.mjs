@@ -2,11 +2,15 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
-  PASSTIME_ACTIVITIES, PASSTIME_GUILD_ID, PASSTIME_OWNER_ID, PASSTIME_TIME_ZONE,
-  isPasstimeCommand, isPasstimeManager, normalizeDay, saoPauloClock, validTime,
+  PASSTIME_ACTIVITIES, PASSTIME_GUILD_ID, PASSTIME_OWNER_ID, PASSTIME_SCHEDULE_SLOTS,
+  PASSTIME_TIME_ZONE, PASSTIME_USER_SCHEDULE_LIMIT, isPasstimeCommand, isPasstimeManager,
+  normalizeDay, passtimeScheduleTime, saoPauloClock, validTime,
 } from '../src/passtime/config.ts';
 import { PASSTIME_IMPLEMENTED_COMMANDS } from '../src/passtime/module.ts';
-import { bankRequestMessage, identificationMessage, pointsMessage, scheduleMessage, teamMessage } from '../src/passtime/messages.ts';
+import {
+  bankRequestMessage, identificationMessage, pointsMessage, scheduleActivityPicker, scheduleDayPicker,
+  scheduleMessage, scheduleSlotPicker, teamMessage,
+} from '../src/passtime/messages.ts';
 
 const requested = [
   '!apelido', '!embed', '!logs', '!verificacao', '!clear', '!membersrole', '!anuncio', '!banca',
@@ -37,13 +41,16 @@ test('cronograma aceita dias em português e horário de 24 horas', () => {
   assert.deepEqual(saoPauloClock(new Date('2026-10-05T02:30:00.000Z')), {
     date: '2026-10-04', time: '23:30', day: 'domingo',
   });
+  assert.equal(PASSTIME_USER_SCHEDULE_LIMIT, 2);
+  assert.equal(PASSTIME_SCHEDULE_SLOTS.length, 4);
+  assert.equal(passtimeScheduleTime('09:30'), '09h30 – 11h30');
 });
 
 test('cronograma oferece autoagendamento, consulta, cancelamento e atualização', () => {
   assert.ok(PASSTIME_ACTIVITIES.some(activity => activity.value === 'alta-opina'));
   assert.ok(PASSTIME_ACTIVITIES.some(activity => activity.value === 'cafe-com-fofoca'));
   const payload = scheduleMessage([{
-    id: 'entry-1', guildId: PASSTIME_GUILD_ID, day: 'segunda', time: '09:00', label: 'Alta Opina',
+    id: 'entry-1', guildId: PASSTIME_GUILD_ID, day: 'segunda', time: '09:30', label: 'Alta Opina',
     userId: '1002774556269891694', activityKey: 'alta-opina', reminderMinutes: 120,
     lastReminderKey: null, lastStartKey: null, position: 0, createdAt: new Date(), updatedAt: new Date(),
   }]);
@@ -56,6 +63,21 @@ test('cronograma oferece autoagendamento, consulta, cancelamento e atualização
   assert.match(raw, /Limpar cronograma/);
   assert.match(raw, /1002774556269891694/);
   assert.match(raw, /Responsável/);
+  assert.match(raw, /09h30 – 11h30/);
+
+  const day = JSON.stringify(scheduleDayPicker([{
+    id: 'entry-1', guildId: PASSTIME_GUILD_ID, day: 'segunda', time: '09:30', label: 'Alta Opina',
+    userId: '1002774556269891694', activityKey: 'alta-opina', reminderMinutes: 120,
+    lastReminderKey: null, lastStartKey: null, position: 0, createdAt: new Date(), updatedAt: new Date(),
+  }], '123456789012345678').components);
+  assert.match(day, /123456789012345678/);
+  assert.match(day, /1\/2/);
+
+  const slots = JSON.stringify(scheduleSlotPicker(0, new Set(['09:30'])).components);
+  assert.doesNotMatch(slots, /09h30/);
+  assert.match(slots, /12h00/);
+  const activity = JSON.stringify(scheduleActivityPicker(0, 'tarde-1', PASSTIME_ACTIVITIES).components);
+  assert.match(activity, /passtime:schedule:activity:0:tarde-1/);
 });
 
 test('painéis Passtime usam Components V2, botão cinza e artes configuráveis', () => {
@@ -103,5 +125,8 @@ test('agendamento atualiza o painel e dispara alertas automáticos', async () =>
   assert.match(source, /scheduleEditModal/);
   assert.match(source, /scheduleClearConfirm/);
   assert.match(source, /await refreshLinkedLeadershipSchedule\(guild\.client\)/);
+  assert.match(source, /Digite CONFIRMO para reservar/);
+  assert.match(source, /PASSTIME_USER_SCHEDULE_LIMIT/);
+  assert.match(source, /scheduleBookingLocks/);
   assert.match(source, /if \(running\) return/);
 });

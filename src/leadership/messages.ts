@@ -89,6 +89,7 @@ export type LeadershipScheduleItem = {
   id: string;
   day: string;
   time: string;
+  timeLabel?: string;
   label: string;
   roleId: string | null;
   userId?: string | null;
@@ -109,7 +110,7 @@ export function scheduleMessage(entries: LeadershipScheduleItem[]) {
     return `${title}\n${items.map(item => {
       const activity = item.roleId ? `<@&${item.roleId}>${item.label ? ` — ${item.label}` : ''}` : item.label;
       const responsible = item.userId ? `\n  ↳ **Responsável:** <@${item.userId}>` : '';
-      return `\`${item.time}\` - **${activity}**${responsible}`;
+      return `\`${item.timeLabel ?? item.time}\` - **${activity}**${responsible}`;
     }).join('\n')}`;
   });
   return leadershipV2([
