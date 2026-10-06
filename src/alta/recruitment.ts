@@ -14,6 +14,7 @@ export const ALTA_RECRUITMENT_CHANNEL_ID = '1514841820947939508';
 export const ALTA_RECRUITMENT_RECORDS_CHANNEL_ID = '1514841659194736650';
 export const ALTA_RECRUITMENT_ANNOUNCEMENT_CHANNEL_ID = '1516279462931595385';
 export const ALTA_RECRUITMENT_ROLE_ID = '1417338258815193219';
+export const ALTA_RECRUITMENT_APPROVED_ROLE_ID = '1464374644369789102';
 export const ALTA_RECRUITMENT_ACCENT = 0x7a163d;
 export const ALTA_RECRUITMENT_VALIDATOR_IDS = [
   '446428192220119041',
@@ -427,7 +428,13 @@ export async function handleAltaRecruitmentButton(interaction: ButtonInteraction
         const ranks = await altaRecruitmentRankRoles(interaction.guild);
         const selected = ranks.find(rank => rank.role.id === record.rankRoleId);
         if (!selected) throw new Error('O cargo inicial salvo não está mais disponível.');
-        if (!target.roles.cache.has(selected.role.id)) await target.roles.add(selected.role, `Recrutamento validado por ${interaction.user.tag}`);
+        const approvedRole = await interaction.guild.roles.fetch(ALTA_RECRUITMENT_APPROVED_ROLE_ID).catch(() => null);
+        if (!approvedRole) throw new Error('O cargo obrigatório de recrutado aprovado não foi encontrado no servidor.');
+        if (approvedRole.managed || !approvedRole.editable) {
+          throw new Error(`O cargo **${approvedRole.name}** precisa ficar abaixo do cargo do Angel.`);
+        }
+        const rolesToAdd = [selected.role, approvedRole].filter(role => !target.roles.cache.has(role.id));
+        if (rolesToAdd.length) await target.roles.add(rolesToAdd, `Recrutamento validado por ${interaction.user.tag}`);
         const oldRanks = ranks.filter(rank => rank.role.id !== selected.role.id && target.roles.cache.has(rank.role.id));
         if (oldRanks.length) await target.roles.remove(oldRanks.map(rank => rank.role), 'Cargo inicial atualizado após validação REC');
       }

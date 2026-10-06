@@ -4,7 +4,7 @@ import test from 'node:test';
 import { ALTA_GUILD_ID } from '../src/alta/rise.ts';
 import {
   ALTA_RECRUITMENT_ANNOUNCEMENT_CHANNEL_ID, ALTA_RECRUITMENT_CHANNEL_ID, ALTA_RECRUITMENT_FAMILIES,
-  ALTA_RECRUITMENT_RANKS, ALTA_RECRUITMENT_RECORDS_CHANNEL_ID, ALTA_RECRUITMENT_ROLE_ID,
+  ALTA_RECRUITMENT_APPROVED_ROLE_ID, ALTA_RECRUITMENT_RANKS, ALTA_RECRUITMENT_RECORDS_CHANNEL_ID, ALTA_RECRUITMENT_ROLE_ID,
   ALTA_RECRUITMENT_VALIDATOR_IDS, altaRecruitmentCommand, altaRecruitmentReportCommand,
   altaRecruitmentResetCommand, buildAltaRecruitmentAnnouncement, buildAltaRecruitmentRecord,
   recruitmentStaffAreas,
@@ -53,6 +53,7 @@ test('/rec do Angel fica restrito ao servidor, canal e cargo de Recrutamento da 
   assert.equal(ALTA_RECRUITMENT_RECORDS_CHANNEL_ID, '1514841659194736650');
   assert.equal(ALTA_RECRUITMENT_ANNOUNCEMENT_CHANNEL_ID, '1516279462931595385');
   assert.equal(ALTA_RECRUITMENT_ROLE_ID, '1417338258815193219');
+  assert.equal(ALTA_RECRUITMENT_APPROVED_ROLE_ID, '1464374644369789102');
   assert.deepEqual([...ALTA_RECRUITMENT_VALIDATOR_IDS], [
     '446428192220119041', '1251718254729232516', '1002774556269891694',
   ]);
@@ -107,7 +108,8 @@ test('Angel valida antes de aplicar cargo, contabiliza aprovados e integra a Lid
   assert.match(source, /status === 'APPROVED'/);
   assert.match(source, /status: 'APPROVED', active: true/);
   assert.match(source, /data: \{ active: false \}/);
-  assert.match(source, /target\.roles\.add\(selected\.role/);
+  assert.match(source, /guild\.roles\.fetch\(ALTA_RECRUITMENT_APPROVED_ROLE_ID\)/);
+  assert.match(source, /target\.roles\.add\(rolesToAdd/);
   assert.match(source, /target\.roles\.remove\(oldRanks/);
   assert.match(source, /channels\.fetch\(ALTA_RECRUITMENT_RECORDS_CHANNEL_ID\)/);
   assert.match(source, /prisma\.leadershipArea\.findUnique/);
