@@ -1,5 +1,6 @@
 import type { MessageCreateOptions } from 'discord.js';
 import type { PasstimeConfig, PasstimeScheduleEntry } from '@prisma/client';
+import { basename, resolve } from 'node:path';
 import {
   PASSTIME_ACCENT, PASSTIME_DAYS, PASSTIME_IDS, PASSTIME_SCHEDULE_SLOTS,
   PASSTIME_USER_SCHEDULE_LIMIT, passtimeScheduleSlot, passtimeScheduleTime,
@@ -17,6 +18,7 @@ export type PasstimePresentation = {
 };
 
 export type PasstimeRankItem = { userId: string; points: number };
+export type PasstimeEditorialPanelKey = 'notices' | 'guide' | 'server-decoration' | 'tutorials' | 'warnings' | 'management-drafts';
 
 const separator = { type: 14, divider: true, spacing: 1 };
 const text = (content: string) => ({ type: 10, content });
@@ -27,14 +29,17 @@ const button = (customId: string, label: string, emoji?: string) => ({
 export function passtimeV2(content: string, options: {
   banner?: boolean;
   bannerUrl?: string | null;
+  bannerFile?: string;
   footer?: string;
   components?: ApiComponent[];
   allowedRoles?: string[];
   allowedUsers?: string[];
 } = {}): MessageCreateOptions {
   const children: ApiComponent[] = [];
-  if (options.banner !== false && options.bannerUrl) {
-    children.push({ type: 12, items: [{ media: { url: options.bannerUrl }, description: 'Passtime Alta' }] });
+  const bannerName = options.bannerFile ? basename(options.bannerFile) : null;
+  const bannerUrl = bannerName ? `attachment://${bannerName}` : options.bannerUrl;
+  if (options.banner !== false && bannerUrl) {
+    children.push({ type: 12, items: [{ media: { url: bannerUrl }, description: 'Passtime Alta' }] });
     children.push(separator);
   }
   children.push(text(content));
@@ -47,6 +52,7 @@ export function passtimeV2(content: string, options: {
       roles: options.allowedRoles ?? [],
       users: options.allowedUsers ?? [],
     },
+    ...(options.bannerFile ? { files: [{ attachment: resolve(process.cwd(), 'assets', 'passtime', options.bannerFile), name: bannerName! }] } : {}),
     components: [{ type: 17, accent_color: PASSTIME_ACCENT, components: children }],
   } as unknown as MessageCreateOptions;
 }
@@ -69,36 +75,37 @@ export function bankRequestMessage(presentation: PasstimePresentation = {}) {
 
 export function verificationMessage() {
   return passtimeV2([
-    '# ✅ | Verificação',
-    '*Entre oficialmente para a equipe Passtime.*',
+    '# 🌸﹒Verificação Passtime',
+    '*Seu cantinho criativo começa por aqui!*',
     '',
-    'Clique no botão abaixo para receber o cargo de membro e liberar os canais da equipe.',
+    '୨ৎ Clique no botão abaixo para receber o cargo de membro e liberar os canais internos da equipe.',
+    '',
+    '♡ Ao entrar, você concorda em manter o respeito, a organização e o cuidado com as matérias da Alta.',
   ].join('\n'), {
-    banner: false,
-    footer: 'Passtime • Alta • Verificação automática',
-    components: [{ type: 1, components: [button(PASSTIME_IDS.verify, 'Verificar', '✅')] }],
+    bannerFile: 'verification.png',
+    footer: 'Passtime Alta • verificação automática',
+    components: [{ type: 1, components: [button(PASSTIME_IDS.verify, 'Entrar no Passtime', '🌷')] }],
   });
 }
 
 export function identificationMessage(presentation: PasstimePresentation = {}) {
-  const mascot = presentation.minionEmoji || '🔍';
   return passtimeV2([
-    `# ${mascot} | Identificação`,
-    '*Agilidade para identificar sua matéria.*',
+    '# 🎀﹒Organização das Bancas',
+    '*Uma banca bonita também precisa ser fácil de entender.*',
     '',
-    'Quando sua matéria estiver pronta, envie-a na sua banca junto com a ficha de identificação e marque um corretor para realizar a correção.',
+    '୨ৎ Quando sua matéria estiver pronta, publique a ficha abaixo na sua banca e marque um corretor.',
     '',
-    '### 📝 Ficha de Identificação',
+    '### ✎﹒Ficha de identificação',
     '```text\nPostagem:\nTema:\nCorretor:\nPontos: (preenchido pelo corretor)\nErros: (preenchido pelo corretor)\nDecorador: (se teve)\nVago: (se for horário vago)\n```',
-    '**Orientações:**',
-    '• Após a correção, atualize a ficha com os erros e a pontuação informados pelo corretor;',
-    '• Apague as mensagens relacionadas à correção depois de atualizar a ficha;',
-    '• Mantenha sua banca organizada e evite mensagens desnecessárias;',
-    '• Bancas limpas facilitam a visualização das matérias, correções e pontuações;',
-    '• Sempre realize as correções solicitadas pelo monitor e mantenha sua ficha atualizada.',
+    '### ♡﹒Checklist da banca',
+    '• Atualize a ficha com erros e pontuação depois da correção;',
+    '• Apague conversas de correção após registrar o resultado;',
+    '• Separe rascunho, versão corrigida e postagem final;',
+    '• Evite mensagens soltas que dificultem a conferência;',
+    '• Realize todos os ajustes pedidos pelo corretor.',
     '',
-    '**Importante:** bancas desorganizadas ao final da semana poderão sofrer desconto de pontuação.',
-  ].join('\n'), { bannerUrl: presentation.identificationBannerUrl, footer: 'Passtime • Alta' });
+    '-# Bancas desorganizadas ao fim da semana poderão sofrer desconto de pontuação.',
+  ].join('\n'), { bannerFile: 'bank-organization.png', footer: 'Passtime Alta • organização, carinho e criatividade' });
 }
 
 export function pointsMessage(presentation: PasstimePresentation = {}) {
@@ -132,15 +139,15 @@ export function rankingMessage(items: PasstimeRankItem[], cycleStartedAt: Date) 
     : '*O ranking deste ciclo ainda está vazio.*';
   const cycle = Math.floor(cycleStartedAt.getTime() / 1000);
   return passtimeV2([
-    '# 🏆 | Ranking Passtime',
-    '*Destaques do ciclo atual.*',
+    '# ✨﹒Destaques Passtime',
+    '*Criatividade, presença e dedicação que merecem brilhar.*',
     '',
     ranking,
     '',
     `-# Ciclo iniciado em <t:${cycle}:d> às <t:${cycle}:t>.`,
   ].join('\n'), {
-    banner: false,
-    footer: 'Passtime • Alta • Atualização automática',
+    bannerFile: 'highlights.png',
+    footer: 'Passtime Alta • atualização automática',
     components: [{ type: 1, components: [
       button(PASSTIME_IDS.rankMine, 'Meus pontos', '✨'),
       button(PASSTIME_IDS.rankRefresh, 'Atualizar ranking', '🔄'),
@@ -167,19 +174,130 @@ export function rankResetConfirmation(userId: string, members: number, points: n
 const member = (id: string | null) => id ? `<@${id}>` : '*Não definido*';
 
 export function teamMessage(config: Pick<PasstimeConfig, 'leaderId' | 'deputyLeaderId' | 'managerId' | 'supervisorId'>, presentation: PasstimePresentation = {}) {
-  const mascot = presentation.minionEmoji || '🌟';
   return passtimeV2([
-    `# ${mascot} | Equipe`,
-    '*Conheça nossa gestão.*',
+    '# 💗﹒Equipe Passtime',
+    '*As pessoas que cuidam para cada ideia ganhar vida.*',
     '',
-    `**Líder:** ${member(config.leaderId)}`,
-    `**Sub-líder:** ${member(config.deputyLeaderId)}`,
-    `**Gerente:** ${member(config.managerId)}`,
-    `**Supervisor:** ${member(config.supervisorId)}`,
+    `🌷 **Líder**﹒${member(config.leaderId)}`,
+    `🎀 **Sub-líder**﹒${member(config.deputyLeaderId)}`,
+    `🧁 **Gerente**﹒${member(config.managerId)}`,
+    `🌸 **Supervisor**﹒${member(config.supervisorId)}`,
+    '',
+    '୨ৎ Em caso de dúvida, procure a gestão com respeito e explique a situação com clareza.',
   ].join('\n'), {
-    bannerUrl: presentation.teamBannerUrl,
-    footer: 'Passtime • Alta',
+    bannerFile: 'team.png',
+    footer: 'Passtime Alta • juntas criamos momentos especiais',
   });
+}
+
+const channelMention = (id: string | null) => id ? `<#${id}>` : '*canal em configuração*';
+
+export function editorialPasstimeMessage(key: PasstimeEditorialPanelKey, config: PasstimeConfig) {
+  const panels: Record<PasstimeEditorialPanelKey, { file: string; content: string; footer: string }> = {
+    notices: {
+      file: 'notices.png',
+      content: [
+        '# 💌﹒Avisos Passtime',
+        '*Fique por dentro de tudo que movimenta nossa equipe.*',
+        '',
+        '୨ৎ Aqui serão publicados mudanças de cronograma, lembretes, metas, novidades e comunicados da gestão.',
+        '',
+        '### 🌷﹒Para não perder nada',
+        '• Mantenha as notificações deste canal ativadas;',
+        '• Leia o aviso completo antes de tirar dúvidas;',
+        '• Observe datas e horários — seguimos o horário de Brasília;',
+        '• Evite conversas neste canal para manter os comunicados organizados.',
+      ].join('\n'),
+      footer: 'Passtime Alta • informação também é cuidado',
+    },
+    guide: {
+      file: 'guide.png',
+      content: [
+        '# 🌸﹒Guia Passtime',
+        '*Um mapa delicado para você começar sem se perder.*',
+        '',
+        `🎀 **Abra sua banca** em ${channelMention(config.requestChannelId)}`,
+        `🗓️ **Reserve sua matéria** em ${channelMention(config.scheduleChannelId)}`,
+        `✎ **Organize e identifique** seguindo ${channelMention(config.identificationChannelId)}`,
+        `💗 **Confira a pontuação** em ${channelMention(config.pointsChannelId)}`,
+        `✨ **Acompanhe os destaques** em ${channelMention(config.rankChannelId)}`,
+        `🌷 **Conheça a gestão** em ${channelMention(config.teamChannelId)}`,
+        '',
+        '୨ৎ Produza com antecedência, peça correção, faça os ajustes e registre a versão final na sua banca.',
+      ].join('\n'),
+      footer: 'Passtime Alta • seu guia para criar com confiança',
+    },
+    'server-decoration': {
+      file: 'server-decoration.png',
+      content: [
+        '# 🎨﹒Decoração do Servidor',
+        '*Detalhes fofinhos deixam tudo especial — sem perder a leitura.*',
+        '',
+        '### 🧁﹒Nossa identidade',
+        '• Paleta principal em rosa, branco e tons suaves;',
+        '• Elementos cute e anime combinando com o Passtime;',
+        '• Títulos curtos, divisórias leves e emojis coerentes;',
+        '• Contraste e legibilidade vêm antes do excesso de decoração.',
+        '',
+        '୨ৎ Precisa de ajuda em uma matéria? Marque a equipe de decoração na sua banca e explique o que deseja.',
+      ].join('\n'),
+      footer: 'Passtime Alta • criatividade com identidade',
+    },
+    tutorials: {
+      file: 'tutorials.png',
+      content: [
+        '# 🧸﹒Tutoriais Passtime',
+        '*Passinhos simples para sua matéria sair linda e certinha.*',
+        '',
+        '### 01﹒Comece pela agenda',
+        `Escolha dia, horário e matéria em ${channelMention(config.scheduleChannelId)} e confirme sua reserva.`,
+        '',
+        '### 02﹒Produza na sua banca',
+        'Guarde o rascunho, fontes, imagens e versão final no mesmo lugar.',
+        '',
+        '### 03﹒Solicite correção',
+        'Envie a ficha de identificação preenchida e marque um corretor com antecedência.',
+        '',
+        '### 04﹒Finalize e registre',
+        'Faça os ajustes, publique no horário reservado e deixe o resultado organizado para pontuação.',
+      ].join('\n'),
+      footer: 'Passtime Alta • criar, revisar e brilhar',
+    },
+    warnings: {
+      file: 'warnings.png',
+      content: [
+        '# ⚠️﹒Advertências',
+        '*Registro interno e responsável da gestão Passtime.*',
+        '',
+        '### 🎀﹒Antes de registrar',
+        '• Confirme os fatos e reúna o contexto necessário;',
+        '• Descreva a situação de forma objetiva, sem exposição desnecessária;',
+        '• Informe membro, motivo, evidências, responsável e medida aplicada;',
+        '• Preserve a privacidade: este espaço é exclusivo da gestão.',
+        '',
+        '୨ৎ Toda decisão deve seguir as regras da Alta e manter tratamento respeitoso.',
+      ].join('\n'),
+      footer: 'Passtime Alta • gestão responsável e transparente',
+    },
+    'management-drafts': {
+      file: 'management-drafts.png',
+      content: [
+        '# 📝﹒Rascunhos da Gestão',
+        '*Um espaço seguro para preparar tudo antes de publicar.*',
+        '',
+        '### 🌷﹒Use este canal para',
+        '• Revisar avisos, campanhas, metas e comunicados;',
+        '• Testar textos e artes antes da publicação oficial;',
+        '• Organizar decisões e dividir tarefas da gestão;',
+        '• Conferir ortografia, menções, datas e horários.',
+        '',
+        '୨ৎ Use `!embed` para montar uma V2 e `!anuncio` para preparar um comunicado.',
+      ].join('\n'),
+      footer: 'Passtime Alta • bastidores da gestão',
+    },
+  };
+  const panel = panels[key];
+  return passtimeV2(panel.content, { bannerFile: panel.file, footer: panel.footer });
 }
 
 export function bankWelcomeMessage(userId: string, config: Pick<PasstimeConfig, 'identificationChannelId' | 'correctorRoleId' | 'decoratorRoleId'>, presentation: PasstimePresentation = {}) {

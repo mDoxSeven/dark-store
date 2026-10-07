@@ -285,6 +285,21 @@ model PasstimeConfig {
   reminders            PasstimeReminder[]
   scores               PasstimeScore[]
   pointLogs            PasstimePointLog[]
+  panels               PasstimePanel[]
+}
+
+model PasstimePanel {
+  id        String         @id @default(cuid())
+  guildId   String
+  key       String
+  channelId String
+  messageId String?
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  config    PasstimeConfig @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  @@unique([guildId, key])
+  @@index([guildId, channelId])
 }
 
 model PasstimeScore {

@@ -2,14 +2,14 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
-  PASSTIME_ACTIVITIES, PASSTIME_GUILD_ID, PASSTIME_OWNER_ID, PASSTIME_RANK_CHANNEL_ID, PASSTIME_SCHEDULE_SLOTS,
+  PASSTIME_ACCENT, PASSTIME_ACTIVITIES, PASSTIME_GUILD_ID, PASSTIME_OWNER_ID, PASSTIME_RANK_CHANNEL_ID, PASSTIME_SCHEDULE_SLOTS,
   PASSTIME_TIME_ZONE, PASSTIME_USER_SCHEDULE_LIMIT, isPasstimeCommand, isPasstimeManager,
   normalizeDay, passtimeScheduleTime, saoPauloClock, validTime,
 } from '../src/passtime/config.ts';
 import { PASSTIME_IMPLEMENTED_COMMANDS } from '../src/passtime/module.ts';
 import {
-  bankRequestMessage, identificationMessage, pointsMessage, rankResetConfirmation, rankingMessage,
-  scheduleActivityPicker, scheduleDayPicker, scheduleMessage, scheduleSlotPicker, teamMessage,
+  bankRequestMessage, editorialPasstimeMessage, identificationMessage, pointsMessage, rankResetConfirmation, rankingMessage,
+  scheduleActivityPicker, scheduleDayPicker, scheduleMessage, scheduleSlotPicker, teamMessage, verificationMessage,
 } from '../src/passtime/messages.ts';
 
 const requested = [
@@ -97,9 +97,31 @@ test('painéis Passtime usam Components V2, botão cinza e artes configuráveis'
   assert.match(raw, /request\.png/);
   assert.match(raw, /"style":2/);
   assert.match(raw, /passtime:bank:open/);
-  assert.match(JSON.stringify(identificationMessage(presentation).components), /identification\.png/);
+  assert.match(JSON.stringify(verificationMessage().components), /attachment:\/\/verification\.png/);
+  assert.match(JSON.stringify(identificationMessage(presentation).components), /attachment:\/\/bank-organization\.png/);
   assert.match(JSON.stringify(pointsMessage(presentation).components), /points\.png/);
-  assert.match(JSON.stringify(teamMessage({ leaderId: null, deputyLeaderId: null, managerId: null, supervisorId: null }, presentation).components), /team\.png/);
+  assert.match(JSON.stringify(teamMessage({ leaderId: null, deputyLeaderId: null, managerId: null, supervisorId: null }, presentation).components), /attachment:\/\/team\.png/);
+  assert.equal(PASSTIME_ACCENT, 0xff8f9b);
+});
+
+test('reformulação cute usa cada arte no painel V2 correspondente', () => {
+  const config = {
+    requestChannelId: '1', scheduleChannelId: '2', identificationChannelId: '3', pointsChannelId: '4',
+    rankChannelId: '5', teamChannelId: '6',
+  };
+  const expected = new Map([
+    ['notices', 'notices.png'], ['guide', 'guide.png'], ['server-decoration', 'server-decoration.png'],
+    ['tutorials', 'tutorials.png'], ['warnings', 'warnings.png'], ['management-drafts', 'management-drafts.png'],
+  ]);
+  for (const [key, file] of expected) {
+    const payload = editorialPasstimeMessage(key, config);
+    assert.match(JSON.stringify(payload.components), new RegExp(`attachment://.*${file.replace('.', '\\.')}"`));
+    assert.equal(payload.files?.[0]?.name, file);
+  }
+  assert.equal(rankingMessage([], new Date()).files?.[0]?.name, 'highlights.png');
+  assert.equal(verificationMessage().files?.[0]?.name, 'verification.png');
+  assert.equal(identificationMessage().files?.[0]?.name, 'bank-organization.png');
+  assert.equal(teamMessage({ leaderId: null, deputyLeaderId: null, managerId: null, supervisorId: null }).files?.[0]?.name, 'team.png');
 });
 
 test('ranking Passtime exibe colocação, consulta individual e reset protegido', () => {
@@ -108,7 +130,7 @@ test('ranking Passtime exibe colocação, consulta individual e reset protegido'
     { userId: '1516915772192985088', points: 25 },
   ], new Date('2026-10-05T12:00:00.000Z'));
   const raw = JSON.stringify(payload.components);
-  assert.match(raw, /Ranking Passtime/);
+  assert.match(raw, /Destaques Passtime/);
   assert.match(raw, /1002774556269891694/);
   assert.match(raw, /40 pts/);
   assert.match(raw, /passtime:rank:mine/);
@@ -127,7 +149,7 @@ test('integração do Angel encaminha comandos, botões, formulários e lembrete
   assert.match(source, /handlePasstimeSelect\(interaction\)/);
   assert.match(source, /startPasstimeReminders\(connected\)/);
   const schema = await readFile(new URL('../prisma/schema.prisma', import.meta.url), 'utf8');
-  for (const model of ['PasstimeConfig', 'PasstimeBank', 'PasstimeScheduleEntry', 'PasstimeReminder', 'PasstimeScore', 'PasstimePointLog']) {
+  for (const model of ['PasstimeConfig', 'PasstimeBank', 'PasstimeScheduleEntry', 'PasstimeReminder', 'PasstimeScore', 'PasstimePointLog', 'PasstimePanel']) {
     assert.match(schema, new RegExp(`model ${model}`));
   }
   assert.match(schema, /lastReminderKey\s+String\?/);
@@ -158,4 +180,6 @@ test('ranking persiste pontos, histórico e sincroniza o painel', async () => {
   assert.match(source, /changePasstimePoints/);
   assert.match(source, /refreshRank/);
   assert.match(source, /rankResetConfirm/);
+  assert.match(source, /PASSTIME_EDITORIAL_PANELS/);
+  assert.match(source, /prisma\.passtimePanel/);
 });

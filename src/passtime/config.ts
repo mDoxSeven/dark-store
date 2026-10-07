@@ -6,7 +6,7 @@ export const PASSTIME_MANAGER_IDS = new Set([
   '1516915772192985088',
 ]);
 export const isPasstimeManager = (userId: string) => PASSTIME_MANAGER_IDS.has(userId);
-export const PASSTIME_ACCENT = 0xffdd19;
+export const PASSTIME_ACCENT = 0xff8f9b;
 export const PASSTIME_TIME_ZONE = 'America/Sao_Paulo';
 
 export const PASSTIME_ART_FALLBACKS = {

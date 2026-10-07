@@ -16,16 +16,30 @@ import {
 } from './config.js';
 import {
   announcementMessage, bankRequestMessage, bankWelcomeMessage, editorLauncherMessage,
-  identificationMessage, passtimeV2, pointsMessage, scheduleActivityPicker, scheduleCancelPicker,
+  editorialPasstimeMessage, identificationMessage, passtimeV2, pointsMessage, scheduleActivityPicker, scheduleCancelPicker,
   rankResetConfirmation, rankingMessage, scheduleClearConfirmation, scheduleDayPicker, scheduleEditPicker,
   scheduleMessage, scheduleSlotPicker, teamMessage, verificationMessage,
-  type PasstimePresentation,
+  type PasstimeEditorialPanelKey, type PasstimePresentation,
 } from './messages.js';
 import { refreshLinkedLeadershipSchedule } from '../leadership/module.js';
 
 const ACTIVE_BANK = 'ACTIVE';
 const ARCHIVED_BANK = 'ARCHIVED';
 const scheduleBookingLocks = new Set<string>();
+const PASSTIME_EDITORIAL_PANELS: ReadonlyArray<{
+  key: PasstimeEditorialPanelKey;
+  name: string;
+  access: 'member' | 'management';
+  section: 'start' | 'important' | 'management';
+  topic: string;
+}> = [
+  { key: 'notices', name: 'avisos', access: 'member', section: 'start', topic: 'Comunicados oficiais da equipe Passtime.' },
+  { key: 'guide', name: 'guia', access: 'member', section: 'start', topic: 'Guia rápido para integrantes do Passtime.' },
+  { key: 'server-decoration', name: 'deco-server', access: 'member', section: 'important', topic: 'Identidade visual e decoração do Passtime.' },
+  { key: 'tutorials', name: 'tutoriais', access: 'member', section: 'important', topic: 'Tutoriais oficiais da equipe Passtime.' },
+  { key: 'warnings', name: 'advertências', access: 'management', section: 'management', topic: 'Registros privados de advertências do Passtime.' },
+  { key: 'management-drafts', name: 'rascunhos-gestão', access: 'management', section: 'management', topic: 'Rascunhos privados da gestão Passtime.' },
+];
 const commandError = (error: unknown) => error instanceof Error ? error.message.slice(0, 1800) : 'Ação não concluída.';
 const ephemeralV2 = (payload: MessageCreateOptions) => ({
   ...payload,
@@ -168,7 +182,12 @@ async function ensureTextChannel(
 async function publishOrUpdate(channel: TextChannel, messageId: string | null | undefined, payload: MessageCreateOptions) {
   const existing = messageId ? await channel.messages.fetch(messageId).catch(() => null) : null;
   if (existing) {
-    await existing.edit(payload as MessageEditOptions);
+    const editPayload = { ...payload } as any;
+    const files = (editPayload.files ?? []) as Array<{ name?: string }>;
+    const missingFiles = files.filter(file => !file.name || !existing.attachments.some(attachment => attachment.name === file.name));
+    if (files.length && !missingFiles.length) delete editPayload.files;
+    else if (files.length) editPayload.files = missingFiles;
+    await existing.edit(editPayload as MessageEditOptions);
     return existing.id;
   }
   return (await channel.send(payload)).id;
@@ -254,6 +273,26 @@ export async function setupPasstime(message: Message<true>) {
   const rank = await ensureTextChannel(guild, PASSTIME_RANK_CHANNEL_ID, 'ranking', importantCategory.id, memberOnly, 'Ranking oficial de pontos do Passtime.', created);
   const team = await ensureTextChannel(guild, config.teamChannelId, 'equipe', importantCategory.id, memberOnly, 'Hierarquia da equipe Passtime.', created);
   const logs = await ensureTextChannel(guild, config.logsChannelId, 'logs-passtime', managementCategory.id, logsPrivate, 'Ações administrativas do módulo Passtime.', created);
+  const storedPanels = await prisma.passtimePanel.findMany({ where: { guildId: guild.id } });
+  const storedByKey = new Map(storedPanels.map(panel => [panel.key, panel]));
+  const sectionIds = {
+    start: startCategory.id,
+    important: importantCategory.id,
+    management: managementCategory.id,
+  };
+  const editorialChannels = new Map<PasstimeEditorialPanelKey, TextChannel>();
+  for (const panel of PASSTIME_EDITORIAL_PANELS) {
+    const channel = await ensureTextChannel(
+      guild,
+      storedByKey.get(panel.key)?.channelId,
+      panel.name,
+      sectionIds[panel.section],
+      panel.access === 'management' ? logsPrivate : memberOnly,
+      panel.topic,
+      created,
+    );
+    editorialChannels.set(panel.key, channel);
+  }
 
   config = await prisma.passtimeConfig.update({ where: { guildId: guild.id }, data: {
     memberRoleId: memberRole.id, decoratorRoleId: decoratorRole.id, correctorRoleId: correctorRole.id,
@@ -287,6 +326,19 @@ export async function setupPasstime(message: Message<true>) {
     verificationMessageId, requestMessageId, identificationMessageId, pointsMessageId, rankMessageId,
     teamMessageId, scheduleMessageId,
   } });
+  for (const panel of PASSTIME_EDITORIAL_PANELS) {
+    const channel = editorialChannels.get(panel.key)!;
+    const messageId = await publishOrUpdate(
+      channel,
+      storedByKey.get(panel.key)?.messageId,
+      editorialPasstimeMessage(panel.key, config),
+    );
+    await prisma.passtimePanel.upsert({
+      where: { guildId_key: { guildId: guild.id, key: panel.key } },
+      create: { guildId: guild.id, key: panel.key, channelId: channel.id, messageId },
+      update: { channelId: channel.id, messageId },
+    });
+  }
   await logPasstime(guild, `Estrutura sincronizada por <@${message.author.id}>. ${created.length ? `Criado: ${created.join(', ')}.` : 'Nenhum item duplicado.'}`);
   await refreshLinkedLeadershipSchedule(guild.client).catch(error => console.error(`cronograma Liderança: ${commandError(error)}`));
   return { config, created };
