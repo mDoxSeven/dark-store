@@ -2,15 +2,18 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
-  PASSTIME_ACCENT, PASSTIME_ACTIVITIES, PASSTIME_GUILD_ID, PASSTIME_OWNER_ID, PASSTIME_RANK_CHANNEL_ID, PASSTIME_SCHEDULE_SLOTS,
+  PASSTIME_ACCENT, PASSTIME_ACTIVITIES, PASSTIME_ARCHIVE_CATEGORY_ID, PASSTIME_GUILD_ID, PASSTIME_OWNER_ID,
+  PASSTIME_RANK_CHANNEL_ID, PASSTIME_SCHEDULE_SLOTS, PASSTIME_TUTORIALS_CHANNEL_ID,
   PASSTIME_TIME_ZONE, PASSTIME_USER_SCHEDULE_LIMIT, isPasstimeCommand, isPasstimeManager,
   normalizeDay, passtimeScheduleTime, saoPauloClock, validTime,
 } from '../src/passtime/config.ts';
 import { PASSTIME_IMPLEMENTED_COMMANDS } from '../src/passtime/module.ts';
 import {
   bankRequestMessage, editorialPasstimeMessage, identificationMessage, pointsMessage, rankResetConfirmation, rankingMessage,
-  scheduleActivityPicker, scheduleDayPicker, scheduleMessage, scheduleSlotPicker, teamMessage, verificationMessage,
+  scheduleActivityPicker, scheduleDayPicker, scheduleMessage, scheduleSlotPicker, teamMessage, tutorialPasstimeMessages,
+  verificationMessage,
 } from '../src/passtime/messages.ts';
+import { passtimeButtonEmoji, passtimeEmoji } from '../src/passtime/emojis.ts';
 
 const requested = [
   '!apelido', '!embed', '!logs', '!verificacao', '!clear', '!membersrole', '!anuncio', '!banca',
@@ -22,6 +25,8 @@ const requested = [
 test('módulo Passtime fica isolado no servidor e usuário autorizados', () => {
   assert.equal(PASSTIME_GUILD_ID, '1506789977927712808');
   assert.equal(PASSTIME_RANK_CHANNEL_ID, '1524346776033693716');
+  assert.equal(PASSTIME_TUTORIALS_CHANNEL_ID, '1525945303839277106');
+  assert.equal(PASSTIME_ARCHIVE_CATEGORY_ID, '1534925818625527818');
   assert.equal(PASSTIME_OWNER_ID, '1002774556269891694');
   assert.equal(isPasstimeManager('1002774556269891694'), true);
   assert.equal(isPasstimeManager('1516915772192985088'), true);
@@ -122,6 +127,27 @@ test('reformulação cute usa cada arte no painel V2 correspondente', () => {
   assert.equal(verificationMessage().files?.[0]?.name, 'verification.png');
   assert.equal(identificationMessage().files?.[0]?.name, 'bank-organization.png');
   assert.equal(teamMessage({ leaderId: null, deputyLeaderId: null, managerId: null, supervisorId: null }).files?.[0]?.name, 'team.png');
+
+  const tutorials = tutorialPasstimeMessages();
+  assert.equal(tutorials.length, 4);
+  for (const tutorial of tutorials) {
+    assert.equal(tutorial.payload.files?.[0]?.name, 'tutorials.png');
+    assert.match(JSON.stringify(tutorial.payload.components), /attachment:\/\/tutorials\.png/);
+  }
+  const tutorialText = JSON.stringify(tutorials.map(item => item.payload.components));
+  assert.match(tutorialText, /mínimo 5 opções/);
+  assert.match(tutorialText, /até 4 desenvolvimentos/);
+  assert.match(tutorialText, /barrinha final/);
+  assert.match(tutorialText, /nome e foto borrados/);
+});
+
+test('emojis Passtime possuem fallback e arquivos próprios para sincronização', async () => {
+  assert.equal(passtimeEmoji('heart'), '💗');
+  assert.deepEqual(passtimeButtonEmoji('bow'), { name: '🎀' });
+  const source = await readFile(new URL('../src/passtime/emojis.ts', import.meta.url), 'utf8');
+  for (const file of ['passtime-heart.png', 'passtime-bow.png', 'passtime-star.png', 'passtime-note.png', 'passtime-heart-pulse.gif', 'passtime-star-twinkle.gif']) {
+    assert.match(source, new RegExp(file.replace('.', '\\.')));
+  }
 });
 
 test('ranking Passtime exibe colocação, consulta individual e reset protegido', () => {
@@ -182,4 +208,8 @@ test('ranking persiste pontos, histórico e sincroniza o painel', async () => {
   assert.match(source, /rankResetConfirm/);
   assert.match(source, /PASSTIME_EDITORIAL_PANELS/);
   assert.match(source, /prisma\.passtimePanel/);
+  assert.match(source, /PASSTIME_ARCHIVE_CATEGORY_ID/);
+  assert.match(source, /PASSTIME_TUTORIALS_CHANNEL_ID/);
+  assert.match(source, /tutorialPasstimeMessages/);
+  assert.match(source, /syncPasstimeEmojis/);
 });

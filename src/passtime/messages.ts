@@ -5,6 +5,7 @@ import {
   PASSTIME_ACCENT, PASSTIME_DAYS, PASSTIME_IDS, PASSTIME_SCHEDULE_SLOTS,
   PASSTIME_USER_SCHEDULE_LIMIT, passtimeScheduleSlot, passtimeScheduleTime,
 } from './config.js';
+import { passtimeButtonEmoji, passtimeEmoji } from './emojis.js';
 
 type ApiComponent = Record<string, unknown>;
 
@@ -22,8 +23,9 @@ export type PasstimeEditorialPanelKey = 'notices' | 'guide' | 'server-decoration
 
 const separator = { type: 14, divider: true, spacing: 1 };
 const text = (content: string) => ({ type: 10, content });
-const button = (customId: string, label: string, emoji?: string) => ({
-  type: 2, style: 2, custom_id: customId, label, ...(emoji ? { emoji: { name: emoji } } : {}),
+const button = (customId: string, label: string, emoji?: string | { id?: string; name: string; animated?: boolean }) => ({
+  type: 2, style: 2, custom_id: customId, label,
+  ...(emoji ? { emoji: typeof emoji === 'string' ? { name: emoji } : emoji } : {}),
 });
 
 export function passtimeV2(content: string, options: {
@@ -75,7 +77,7 @@ export function bankRequestMessage(presentation: PasstimePresentation = {}) {
 
 export function verificationMessage() {
   return passtimeV2([
-    '# 🌸﹒Verificação Passtime',
+    `# ${passtimeEmoji('heartPulse')}﹒Verificação Passtime`,
     '*Seu cantinho criativo começa por aqui!*',
     '',
     '୨ৎ Clique no botão abaixo para receber o cargo de membro e liberar os canais internos da equipe.',
@@ -84,13 +86,13 @@ export function verificationMessage() {
   ].join('\n'), {
     bannerFile: 'verification.png',
     footer: 'Passtime Alta • verificação automática',
-    components: [{ type: 1, components: [button(PASSTIME_IDS.verify, 'Entrar no Passtime', '🌷')] }],
+    components: [{ type: 1, components: [button(PASSTIME_IDS.verify, 'Entrar no Passtime', passtimeButtonEmoji('heart'))] }],
   });
 }
 
 export function identificationMessage(presentation: PasstimePresentation = {}) {
   return passtimeV2([
-    '# 🎀﹒Organização das Bancas',
+    `# ${passtimeEmoji('bow')}﹒Organização das Bancas`,
     '*Uma banca bonita também precisa ser fácil de entender.*',
     '',
     '୨ৎ Quando sua matéria estiver pronta, publique a ficha abaixo na sua banca e marque um corretor.',
@@ -139,7 +141,7 @@ export function rankingMessage(items: PasstimeRankItem[], cycleStartedAt: Date) 
     : '*O ranking deste ciclo ainda está vazio.*';
   const cycle = Math.floor(cycleStartedAt.getTime() / 1000);
   return passtimeV2([
-    '# ✨﹒Destaques Passtime',
+    `# ${passtimeEmoji('starTwinkle')}﹒Destaques Passtime`,
     '*Criatividade, presença e dedicação que merecem brilhar.*',
     '',
     ranking,
@@ -149,7 +151,7 @@ export function rankingMessage(items: PasstimeRankItem[], cycleStartedAt: Date) 
     bannerFile: 'highlights.png',
     footer: 'Passtime Alta • atualização automática',
     components: [{ type: 1, components: [
-      button(PASSTIME_IDS.rankMine, 'Meus pontos', '✨'),
+      button(PASSTIME_IDS.rankMine, 'Meus pontos', passtimeButtonEmoji('star')),
       button(PASSTIME_IDS.rankRefresh, 'Atualizar ranking', '🔄'),
     ] }],
   });
@@ -175,7 +177,7 @@ const member = (id: string | null) => id ? `<@${id}>` : '*Não definido*';
 
 export function teamMessage(config: Pick<PasstimeConfig, 'leaderId' | 'deputyLeaderId' | 'managerId' | 'supervisorId'>, presentation: PasstimePresentation = {}) {
   return passtimeV2([
-    '# 💗﹒Equipe Passtime',
+    `# ${passtimeEmoji('heart')}﹒Equipe Passtime`,
     '*As pessoas que cuidam para cada ideia ganhar vida.*',
     '',
     `🌷 **Líder**﹒${member(config.leaderId)}`,
@@ -197,7 +199,7 @@ export function editorialPasstimeMessage(key: PasstimeEditorialPanelKey, config:
     notices: {
       file: 'notices.png',
       content: [
-        '# 💌﹒Avisos Passtime',
+        `# ${passtimeEmoji('heart')}﹒Avisos Passtime`,
         '*Fique por dentro de tudo que movimenta nossa equipe.*',
         '',
         '୨ৎ Aqui serão publicados mudanças de cronograma, lembretes, metas, novidades e comunicados da gestão.',
@@ -213,7 +215,7 @@ export function editorialPasstimeMessage(key: PasstimeEditorialPanelKey, config:
     guide: {
       file: 'guide.png',
       content: [
-        '# 🌸﹒Guia Passtime',
+        `# ${passtimeEmoji('star')}﹒Guia Passtime`,
         '*Um mapa delicado para você começar sem se perder.*',
         '',
         `🎀 **Abra sua banca** em ${channelMention(config.requestChannelId)}`,
@@ -230,7 +232,7 @@ export function editorialPasstimeMessage(key: PasstimeEditorialPanelKey, config:
     'server-decoration': {
       file: 'server-decoration.png',
       content: [
-        '# 🎨﹒Decoração do Servidor',
+        `# ${passtimeEmoji('bow')}﹒Decoração do Servidor`,
         '*Detalhes fofinhos deixam tudo especial — sem perder a leitura.*',
         '',
         '### 🧁﹒Nossa identidade',
@@ -246,27 +248,23 @@ export function editorialPasstimeMessage(key: PasstimeEditorialPanelKey, config:
     tutorials: {
       file: 'tutorials.png',
       content: [
-        '# 🧸﹒Tutoriais Passtime',
-        '*Passinhos simples para sua matéria sair linda e certinha.*',
+        `# ${passtimeEmoji('note')}﹒Tutoriais de Matérias`,
+        '*Como construir cada matéria da equipe Passtime.*',
         '',
-        '### 01﹒Comece pela agenda',
-        `Escolha dia, horário e matéria em ${channelMention(config.scheduleChannelId)} e confirme sua reserva.`,
+        '୨ৎ Os modelos abaixo mostram a **estrutura** esperada. Emojis, símbolos, barrinhas e estilo continuam livres para a criatividade de vocês.',
         '',
-        '### 02﹒Produza na sua banca',
-        'Guarde o rascunho, fontes, imagens e versão final no mesmo lugar.',
+        '💗 **Alta Opina**﹒enquete com participação por reações',
+        '🌷 **Alta Lifestyle**﹒blog, cotidiano ou entrevista',
+        '☕ **Café com Fofoca**﹒assuntos públicos de fora do Discord ou da web',
         '',
-        '### 03﹒Solicite correção',
-        'Envie a ficha de identificação preenchida e marque um corretor com antecedência.',
-        '',
-        '### 04﹒Finalize e registre',
-        'Faça os ajustes, publique no horário reservado e deixe o resultado organizado para pontuação.',
+        `Antes de produzir, reserve seu horário em ${channelMention(config.scheduleChannelId)} e organize tudo na sua banca.`,
       ].join('\n'),
       footer: 'Passtime Alta • criar, revisar e brilhar',
     },
     warnings: {
       file: 'warnings.png',
       content: [
-        '# ⚠️﹒Advertências',
+        `# ${passtimeEmoji('note')}﹒Advertências`,
         '*Registro interno e responsável da gestão Passtime.*',
         '',
         '### 🎀﹒Antes de registrar',
@@ -282,7 +280,7 @@ export function editorialPasstimeMessage(key: PasstimeEditorialPanelKey, config:
     'management-drafts': {
       file: 'management-drafts.png',
       content: [
-        '# 📝﹒Rascunhos da Gestão',
+        `# ${passtimeEmoji('note')}﹒Rascunhos da Gestão`,
         '*Um espaço seguro para preparar tudo antes de publicar.*',
         '',
         '### 🌷﹒Use este canal para',
@@ -298,6 +296,90 @@ export function editorialPasstimeMessage(key: PasstimeEditorialPanelKey, config:
   };
   const panel = panels[key];
   return passtimeV2(panel.content, { bannerFile: panel.file, footer: panel.footer });
+}
+
+export function tutorialPasstimeMessages() {
+  const bannerFile = 'tutorials.png';
+  return [
+    {
+      key: 'tutorials-alta-opina',
+      payload: passtimeV2([
+        `# ${passtimeEmoji('heartPulse')}﹒Alta Opina`,
+        '*Enquete curta, clara e gostosa de participar.*',
+        '',
+        '### 01﹒Introdução',
+        'Cumprimente o público, apresente o tema da enquete e explique como votar pelas reações.',
+        '> Exemplo: “Na enquete de hoje queremos saber qual é a fruta favorita de vocês. Reajam nas opções abaixo para participar!”',
+        '',
+        '### 02﹒Opções',
+        'Prepare **no mínimo 5 opções**. Envie cada opção separadamente no chat e adicione os emojis de votação em cada mensagem.',
+        '> Exemplo: Banana • Maçã • Tangerina • Goiaba • Melancia',
+        '',
+        '### 03﹒Encerramento',
+        'Agradeça a participação, convide o público para acompanhar **Giro Semanal**, **Alta Lifestyle**, **Café com Fofoca** e **Mural Alta**, e finalize com sua barrinha.',
+        '',
+        '୨ৎ Use no máximo **2 emojis de reação** por opção para manter a enquete simples.',
+      ].join('\n'), { bannerFile, footer: 'Passtime Alta • modelo de estrutura, decoração livre' }),
+    },
+    {
+      key: 'tutorials-alta-lifestyle',
+      payload: passtimeV2([
+        `# ${passtimeEmoji('bow')}﹒Alta Lifestyle`,
+        '*Blog, cotidiano e entrevistas com leitura leve.*',
+        '',
+        '### 01﹒Introdução',
+        'Apresente o assunto, explique por que ele é interessante e diga o que o público encontrará na matéria.',
+        '> Exemplo: um texto sobre hábitos saudáveis pode começar mostrando que pequenas atitudes já fazem diferença.',
+        '',
+        '### 02﹒Desenvolvimento',
+        'Divida o conteúdo em blocos curtos e conectados. Matérias extensas podem ter **até 4 desenvolvimentos**.',
+        '• Traga informações úteis, exemplos e contexto;',
+        '• Em entrevistas, identifique as falas e tenha autorização;',
+        '• Revise fontes, ortografia e clareza antes da correção.',
+        '',
+        '### 03﹒Encerramento',
+        'Retome a ideia principal, despeça-se e mencione **Giro Semanal**, **Alta Opina**, **Café com Fofoca** e **Mural Alta** antes da barrinha final.',
+      ].join('\n'), { bannerFile, footer: 'Passtime Alta • modelo de estrutura, decoração livre' }),
+    },
+    {
+      key: 'tutorials-cafe-fofoca',
+      payload: passtimeV2([
+        `# ${passtimeEmoji('heart')}﹒Café com Fofoca`,
+        '*Novidades públicas de fora do Discord ou assuntos da web.*',
+        '',
+        '### 01﹒Introdução',
+        'Apresente a história sem entregar tudo de imediato e convide o público a acompanhar os detalhes.',
+        '',
+        '### 02﹒Desenvolvimento',
+        'Conte o que aconteceu em ordem, diferencie fatos de rumores e use apenas informações públicas ou autorizadas.',
+        '• Confira a fonte antes de publicar;',
+        '• Não exponha conversas privadas, dados pessoais ou pessoas sem consentimento;',
+        '• Prints do Discord exigem autorização e devem ter nome e foto borrados quando necessário;',
+        '• Evite acusações, humilhações ou conteúdo que possa causar perseguição.',
+        '',
+        '### 03﹒Encerramento',
+        'Feche com uma pergunta leve e mencione **Giro Semanal**, **Alta Opina**, **Alta Lifestyle** e **Mural Alta** antes da barrinha final.',
+      ].join('\n'), { bannerFile, footer: 'Passtime Alta • informação com responsabilidade' }),
+    },
+    {
+      key: 'tutorials-rules',
+      payload: passtimeV2([
+        `# ${passtimeEmoji('starTwinkle')}﹒Regras rápidas das matérias`,
+        '*Liberdade para decorar, responsabilidade para publicar.*',
+        '',
+        '🎀 **Alta Opina:** mínimo de 5 opções, enviadas separadamente;',
+        '🎀 **Textos extensos:** máximo de 4 blocos de desenvolvimento;',
+        '🎀 **Encerramento:** sempre mencionar os outros canais da área;',
+        '🎀 **Finalização:** a barrinha final é obrigatória;',
+        '🎀 **Paleta:** mantenha as cores combinando do início ao fim;',
+        '🎀 **Reações:** use no máximo 2 emojis por opção ou chamada;',
+        '🎀 **Privacidade:** peça autorização e proteja nomes, fotos e conversas;',
+        '🎀 **Correção:** envie a matéria com antecedência e aplique todos os ajustes solicitados.',
+        '',
+        '୨ৎ Os exemplos ensinam a estrutura; símbolos, emojis e barrinhas podem ter a sua identidade.',
+      ].join('\n'), { bannerFile, footer: 'Passtime Alta • organização também vale pontos' }),
+    },
+  ];
 }
 
 export function bankWelcomeMessage(userId: string, config: Pick<PasstimeConfig, 'identificationChannelId' | 'correctorRoleId' | 'decoratorRoleId'>, presentation: PasstimePresentation = {}) {

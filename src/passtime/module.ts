@@ -8,8 +8,9 @@ import {
 import type { PasstimeBank, PasstimeConfig, PasstimeScheduleEntry } from '@prisma/client';
 import { prisma } from '../lib/db.js';
 import {
-  PASSTIME_ACTIVITIES, PASSTIME_ART_FALLBACKS, PASSTIME_COMMANDS, PASSTIME_DAYS, PASSTIME_GUILD_ID,
+  PASSTIME_ACTIVITIES, PASSTIME_ARCHIVE_CATEGORY_ID, PASSTIME_ART_FALLBACKS, PASSTIME_COMMANDS, PASSTIME_DAYS, PASSTIME_GUILD_ID,
   PASSTIME_IDS, PASSTIME_OWNER_ID, PASSTIME_RANK_CHANNEL_ID, PASSTIME_SCHEDULE_REMINDER_MINUTES, PASSTIME_SCHEDULE_SLOTS,
+  PASSTIME_TUTORIALS_CHANNEL_ID,
   PASSTIME_USER_SCHEDULE_LIMIT,
   isPasstimeCommand, isPasstimeManager, normalizeDay, passtimeCommandName, passtimeScheduleSlot,
   passtimeScheduleTime, safeChannelName, saoPauloClock, validTime,
@@ -18,9 +19,10 @@ import {
   announcementMessage, bankRequestMessage, bankWelcomeMessage, editorLauncherMessage,
   editorialPasstimeMessage, identificationMessage, passtimeV2, pointsMessage, scheduleActivityPicker, scheduleCancelPicker,
   rankResetConfirmation, rankingMessage, scheduleClearConfirmation, scheduleDayPicker, scheduleEditPicker,
-  scheduleMessage, scheduleSlotPicker, teamMessage, verificationMessage,
+  scheduleMessage, scheduleSlotPicker, teamMessage, tutorialPasstimeMessages, verificationMessage,
   type PasstimeEditorialPanelKey, type PasstimePresentation,
 } from './messages.js';
+import { syncPasstimeEmojis } from './emojis.js';
 import { refreshLinkedLeadershipSchedule } from '../leadership/module.js';
 
 const ACTIVE_BANK = 'ACTIVE';
@@ -219,7 +221,7 @@ export async function setupPasstime(message: Message<true>) {
   const missing = me.permissions.missing([
     PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory,
     PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ManageRoles,
-    PermissionFlagsBits.ManageMessages, PermissionFlagsBits.ManageNicknames,
+    PermissionFlagsBits.ManageMessages, PermissionFlagsBits.ManageNicknames, PermissionFlagsBits.ManageGuildExpressions,
   ]);
   if (missing.length) throw new Error(`Permissões ausentes no angel: ${missing.join(', ')}.`);
 
@@ -257,7 +259,7 @@ export async function setupPasstime(message: Message<true>) {
 
   const startCategory = await ensureCategory(guild, undefined, 'PASSTIME • INÍCIO', memberOnly, created);
   const bankCategory = await ensureCategory(guild, config.bankCategoryId, 'BANCAS • PASSTIME', bankPrivate, created);
-  const archiveCategory = await ensureCategory(guild, config.archiveCategoryId, 'BANCAS • ARQUIVADAS', bankPrivate, created);
+  const archiveCategory = await ensureCategory(guild, PASSTIME_ARCHIVE_CATEGORY_ID, 'BANCAS • ARQUIVADAS', bankPrivate, created);
   const importantCategory = await ensureCategory(guild, undefined, 'IMPORTANTE • PASSTIME', memberOnly, created);
   const managementCategory = await ensureCategory(guild, undefined, 'GESTÃO • PASSTIME', logsPrivate, created);
 
@@ -282,9 +284,12 @@ export async function setupPasstime(message: Message<true>) {
   };
   const editorialChannels = new Map<PasstimeEditorialPanelKey, TextChannel>();
   for (const panel of PASSTIME_EDITORIAL_PANELS) {
+    const configuredId = panel.key === 'tutorials'
+      ? PASSTIME_TUTORIALS_CHANNEL_ID
+      : storedByKey.get(panel.key)?.channelId;
     const channel = await ensureTextChannel(
       guild,
-      storedByKey.get(panel.key)?.channelId,
+      configuredId,
       panel.name,
       sectionIds[panel.section],
       panel.access === 'management' ? logsPrivate : memberOnly,
@@ -310,6 +315,7 @@ export async function setupPasstime(message: Message<true>) {
   config = await prisma.passtimeConfig.update({ where: { guildId: guild.id }, data: {
     requestBannerUrl, identificationBannerUrl, pointsBannerUrl, teamBannerUrl,
   } });
+  await syncPasstimeEmojis(guild.client);
   const presentation = await passtimePresentation(guild, config);
   const entries = await prisma.passtimeScheduleEntry.findMany({ where: { guildId: guild.id }, orderBy: [{ day: 'asc' }, { time: 'asc' }] });
   const ranking = await topRankItems(guild.id);
@@ -337,6 +343,16 @@ export async function setupPasstime(message: Message<true>) {
       where: { guildId_key: { guildId: guild.id, key: panel.key } },
       create: { guildId: guild.id, key: panel.key, channelId: channel.id, messageId },
       update: { channelId: channel.id, messageId },
+    });
+  }
+  const tutorialsChannel = editorialChannels.get('tutorials')!;
+  for (const tutorial of tutorialPasstimeMessages()) {
+    const stored = storedByKey.get(tutorial.key);
+    const messageId = await publishOrUpdate(tutorialsChannel, stored?.messageId, tutorial.payload);
+    await prisma.passtimePanel.upsert({
+      where: { guildId_key: { guildId: guild.id, key: tutorial.key } },
+      create: { guildId: guild.id, key: tutorial.key, channelId: tutorialsChannel.id, messageId },
+      update: { channelId: tutorialsChannel.id, messageId },
     });
   }
   await logPasstime(guild, `Estrutura sincronizada por <@${message.author.id}>. ${created.length ? `Criado: ${created.join(', ')}.` : 'Nenhum item duplicado.'}`);
@@ -1322,6 +1338,8 @@ async function dispatchPasstimeReminders(client: Client) {
 }
 
 export function startPasstimeReminders(client: Client) {
+  void syncPasstimeEmojis(client)
+    .catch(error => console.error(`passtime emojis: ${commandError(error)}`));
   let running = false;
   const run = () => {
     if (running) return;
