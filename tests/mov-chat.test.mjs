@@ -7,6 +7,8 @@ import {
   ALTA_MOV_CHAT_LEADER_ROLE_ID,
   ALTA_MOV_CHAT_REPORT_CHANNEL_ID,
   ALTA_MOV_CHAT_REPORT_GUILD_ID,
+  ALTA_MOV_CHAT_RANK_CHANNEL_ID,
+  ALTA_MOV_CHAT_RANK_REFRESH_MS,
   isAltaMovChatCommand,
 } from '../src/alta/movChatConfig.ts';
 import { currentBrazilReportBoundary } from '../src/alta/movChat.ts';
@@ -14,6 +16,7 @@ import {
   movChatConfigMessage,
   movChatCleanupMessage,
   movChatMemberMessage,
+  movChatRankingMessage,
   movChatResetPrompt,
   movChatWeeklyReportMessage,
 } from '../src/alta/movChatMessages.ts';
@@ -22,6 +25,8 @@ test('Mov Chat usa os servidores e canal informados e mantém os comandos atuais
   assert.equal(ALTA_MOV_CHAT_GUILD_ID, '1309533710156169337');
   assert.equal(ALTA_MOV_CHAT_REPORT_GUILD_ID, '1542871650473746454');
   assert.equal(ALTA_MOV_CHAT_REPORT_CHANNEL_ID, '1554586776939794532');
+  assert.equal(ALTA_MOV_CHAT_RANK_CHANNEL_ID, '1531287345725313216');
+  assert.equal(ALTA_MOV_CHAT_RANK_REFRESH_MS, 5_000);
   assert.equal(ALTA_MOV_CHAT_LEADER_ROLE_ID, '1514152283380781157');
   for (const command of ['!config_chat', '!chat', '!mensagens', '!dar_pontos', '!remover_pontos', '!resetar_chat', '!resetar_rank', '!limpeza_chat']) {
     assert.equal(ALTA_MOV_CHAT_COMMANDS.has(command), true);
@@ -83,8 +88,22 @@ test('relatório semanal lista métricas individuais e usa Components V2', () =>
   assert.equal(report.flags, 32768);
   const raw = JSON.stringify(report);
   assert.match(raw, /RELATÓRIO SEMANAL — MOV CHAT/);
-  assert.match(raw, /100 mensagens/);
+  assert.match(raw, /100.*mensagens/);
   assert.match(raw, /75 pontos/);
+});
+
+test('ranking ao vivo usa a identidade visual do Mov Chat', () => {
+  const rank = movChatRankingMessage([{
+    userId: '50', messageCount: 100, scoredMessageCount: 0, chatPoints: 0, manualPoints: 5,
+  }], new Date('2026-10-08T03:00:00.000Z'), '<:Designsemnome1:1><:Designsemnome10:2>', '<:Designsemnome1:1>');
+  const raw = JSON.stringify(rank);
+  assert.match(raw, /Designsemnome1/);
+  assert.match(raw, /Designsemnome10/);
+  assert.match(raw, /RANK — MOV CHAT/);
+  assert.match(raw, /100.*mensagens/);
+  assert.match(raw, /atualização automática/);
+  assert.match(raw, /attachment:\/\/rank-mov-chat\.png/);
+  assert.equal(rank.files?.[0]?.name, 'rank-mov-chat.png');
 });
 
 test('Angel registra mensagens, comandos, botões e agendador do Mov Chat', async () => {
@@ -94,6 +113,7 @@ test('Angel registra mensagens, comandos, botões e agendador do Mov Chat', asyn
   assert.match(bot, /handleAltaMovChatButton\(interaction\)/);
   assert.match(bot, /startAltaMovChatReports\(connected\)/);
   assert.match(bot, /startAltaMovChatCleanup\(connected\)/);
+  assert.match(bot, /startAltaMovChatRank\(connected\)/);
   assert.match(bot, /applyAltaMovChatPolicy\(\)/);
   const module = await readFile(new URL('../src/alta/movChat.ts', import.meta.url), 'utf8');
   assert.match(module, /member\.roles\.cache\.has\(ALTA_MOV_CHAT_LEADER_ROLE_ID\)/);
@@ -106,6 +126,10 @@ test('Angel registra mensagens, comandos, botões e agendador do Mov Chat', asyn
   assert.match(module, /before: job\.scanBeforeId/);
   assert.match(module, /orderBy: \[\{ createdAt: 'asc' \}/);
   assert.match(module, /ALTA_MOV_CHAT_CLEANUP_INTERVAL_MS/);
+  assert.match(module, /queueAltaMovChatRankRefresh\(message\.client\)/);
+  assert.match(module, /refreshAltaMovChatRank/);
+  assert.match(module, /Designsemnome1/);
+  assert.match(module, /Designsemnome10/);
   const schema = await readFile(new URL('../prisma/schema.prisma', import.meta.url), 'utf8');
   for (const model of ['AltaMovChatConfig', 'AltaMovChatChannel', 'AltaMovChatStat', 'AltaMovChatAdjustment', 'AltaMovChatReport', 'AltaMovChatCleanup', 'AltaMovChatCleanupItem']) {
     assert.match(schema, new RegExp(`model ${model}`));
@@ -113,4 +137,6 @@ test('Angel registra mensagens, comandos, botões e agendador do Mov Chat', asyn
   assert.match(schema, /entriesJson\s+String/);
   assert.match(schema, /status\s+String\s+@default\("PENDING"\)/);
   assert.match(schema, /pointsPerMessage\s+Int\s+@default\(0\)/);
+  assert.match(schema, /rankChannelId\s+String\s+@default\("1531287345725313216"\)/);
+  assert.match(schema, /rankMessageId\s+String\?/);
 });

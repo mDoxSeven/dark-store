@@ -1,22 +1,36 @@
 import type { MessageCreateOptions } from 'discord.js';
+import { basename } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { ALTA_MOV_CHAT_ACCENT } from './movChatConfig.js';
 
 type ApiComponent = Record<string, unknown>;
 const separator = { type: 14, divider: true, spacing: 1 };
+const rankBannerPath = fileURLToPath(new URL('../../assets/alta/rank-mov-chat.png', import.meta.url));
 
 export function movChatV2(content: string, options: {
   rows?: ApiComponent[];
   footer?: string;
   allowedUsers?: string[];
   allowedRoles?: string[];
+  bannerFile?: string;
+  bannerDescription?: string;
 } = {}): MessageCreateOptions {
-  const children: ApiComponent[] = [{ type: 10, content }];
+  const bannerName = options.bannerFile ? basename(options.bannerFile) : null;
+  const children: ApiComponent[] = [];
+  if (bannerName) {
+    children.push(
+      { type: 12, items: [{ media: { url: `attachment://${bannerName}` }, description: options.bannerDescription ?? 'Arte do Mov Chat' }] },
+      separator,
+    );
+  }
+  children.push({ type: 10, content });
   if (options.rows?.length) children.push(separator, ...options.rows);
   children.push(separator, { type: 10, content: `-# ${options.footer ?? 'Alta Cúpula • Mov Chat'}` });
   return {
     flags: 32768,
     allowedMentions: { parse: [], users: options.allowedUsers ?? [], roles: options.allowedRoles ?? [] },
     components: [{ type: 17, accent_color: ALTA_MOV_CHAT_ACCENT, components: children }],
+    ...(options.bannerFile ? { files: [{ attachment: options.bannerFile, name: bannerName! }] } : {}),
   } as unknown as MessageCreateOptions;
 }
 
@@ -91,17 +105,23 @@ export function movChatMemberMessage(item: MovChatRankingItem, cycleStartedAt: D
   ].join('\n'));
 }
 
-export function movChatRankingMessage(items: MovChatRankingItem[], cycleStartedAt: Date) {
+export function movChatRankingMessage(items: MovChatRankingItem[], cycleStartedAt: Date, rankBrand = '🏎️⚡', rankIcon = '🏎️') {
   const sorted = [...items].sort((a, b) => b.messageCount - a.messageCount || totalPoints(b) - totalPoints(a));
   const lines = sorted.slice(0, 25).map((item, index) =>
-    `**${index + 1}º** <@${item.userId}> — **${item.messageCount}** mensagens • **${totalPoints(item)} pts**`);
+    `**#${index + 1}** ${rankIcon} <@${item.userId}> — **${item.messageCount}** mensagens • **${totalPoints(item)} pts**`);
   return movChatV2([
-    '# 💬 | MENSAGENS — MOV CHAT',
-    `-# Ciclo iniciado em <t:${Math.floor(cycleStartedAt.getTime() / 1000)}:D>`,
+    `# ${rankBrand} | RANK — MOV CHAT`,
+    `-# 🔴 Ao vivo • ciclo iniciado em <t:${Math.floor(cycleStartedAt.getTime() / 1000)}:D>`,
+    '',
+    '*Abaixo estão os membros com maior presença nos chats monitorados:*',
     '',
     lines.join('\n') || '*Ainda não há atividade registrada neste ciclo.*',
     sorted.length > 25 ? `\n-# Exibindo os 25 primeiros de ${sorted.length} participantes.` : '',
-  ].filter(Boolean).join('\n'));
+  ].filter(Boolean).join('\n'), {
+    footer: 'Alta Cúpula • Mov Chat • atualização automática',
+    bannerFile: rankBannerPath,
+    bannerDescription: 'Rank Mov Chat da Alta Cúpula com tema de corrida',
+  });
 }
 
 export function movChatResetPrompt(userId: string, cycleStartedAt: Date) {

@@ -35,7 +35,7 @@ import { startAltaSuggestions, selectSuggestion, collectSuggestion, reviewSugges
 import { altaEventCommand, altaEventStatusV2, executeAltaEventCommand, handleAltaEventButton, startAltaEventBroadcasts } from '../alta/eventBroadcast.js';
 import {
   applyAltaMovChatPolicy, handleAltaMovChatButton, handleAltaMovChatCommand,
-  startAltaMovChatCleanup, startAltaMovChatReports, trackAltaMovChatMessage,
+  startAltaMovChatCleanup, startAltaMovChatRank, startAltaMovChatReports, trackAltaMovChatMessage,
 } from '../alta/movChat.js';
 import {
   ALTA_RECRUITMENT_PREFIX, altaRecruitmentCommand, altaRecruitmentReportCommand, altaRecruitmentResetCommand,
@@ -478,6 +478,8 @@ export async function startDiscord(token: string) {
           await applyAltaMovChatPolicy()
             .catch(error => console.error(`Política do Mov Chat não aplicada: ${errorText(error)}`));
           startAltaMovChatCleanup(connected);
+          await startAltaMovChatRank(connected)
+            .catch(error => console.error(`Ranking Mov Chat não publicado: ${errorText(error)}`));
           await startAltaEventBroadcasts(connected).catch(error => console.error(`Disparos de eventos: ${errorText(error)}`));
         } else {
           console.warn(`Angel sem acesso ao servidor ${ALTA_GUILD_ID}; comandos da Alta indisponíveis nele.`);

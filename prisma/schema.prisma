@@ -596,6 +596,8 @@ model AltaMovChatConfig {
   managerRoleId         String?
   reportGuildId         String   @default("1542871650473746454")
   reportChannelId       String   @default("1554586776939794532")
+  rankChannelId         String   @default("1531287345725313216")
+  rankMessageId         String?
   pointsCooldownSeconds Int      @default(10)
   cycleStartedAt        DateTime @default(now())
   lastReportAt          DateTime?

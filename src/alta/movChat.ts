@@ -5,6 +5,7 @@ import {
   type GuildMember,
   type Message,
   type MessageCreateOptions,
+  type MessageEditOptions,
 } from 'discord.js';
 import type { AltaMovChatConfig, AltaMovChatReport, AltaMovChatStat } from '@prisma/client';
 import { prisma } from '../lib/db.js';
@@ -17,6 +18,8 @@ import {
   ALTA_MOV_CHAT_REPORT_HOUR,
   ALTA_MOV_CHAT_REPORT_MINUTE,
   ALTA_MOV_CHAT_REPORT_WEEKDAY,
+  ALTA_MOV_CHAT_RANK_CHANNEL_ID,
+  ALTA_MOV_CHAT_RANK_REFRESH_MS,
   ALTA_MOV_CHAT_RESET_PREFIX,
   isAltaMovChatCommand,
   movChatCommandName,
@@ -25,6 +28,7 @@ import {
   movChatConfigMessage,
   movChatCleanupMessage,
   movChatMemberMessage,
+  movChatRankingMessage,
   movChatResetPrompt,
   movChatV2,
   movChatWeeklyReportMessage,
@@ -36,6 +40,10 @@ const reportLocks = new Set<string>();
 let reportTimerStarted = false;
 let cleanupTimerStarted = false;
 let cleanupSweepRunning = false;
+let rankRefreshTimer: NodeJS.Timeout | null = null;
+let rankRefreshRunning = false;
+let rankRefreshDirty = false;
+let rankSafetyTimerStarted = false;
 
 const errorText = (error: unknown) => error instanceof Error ? error.message : 'Ação não concluída.';
 const totalPoints = (item: Pick<AltaMovChatStat, 'chatPoints' | 'manualPoints'>) => item.chatPoints + item.manualPoints;
@@ -63,8 +71,9 @@ async function configFor(guildId = ALTA_MOV_CHAT_GUILD_ID) {
       managerRoleId: ALTA_MOV_CHAT_LEADER_ROLE_ID,
       reportGuildId: ALTA_MOV_CHAT_REPORT_GUILD_ID,
       reportChannelId: ALTA_MOV_CHAT_REPORT_CHANNEL_ID,
+      rankChannelId: ALTA_MOV_CHAT_RANK_CHANNEL_ID,
     },
-    update: { managerRoleId: ALTA_MOV_CHAT_LEADER_ROLE_ID },
+    update: { managerRoleId: ALTA_MOV_CHAT_LEADER_ROLE_ID, rankChannelId: ALTA_MOV_CHAT_RANK_CHANNEL_ID },
   });
 }
 
@@ -82,8 +91,9 @@ export async function applyAltaMovChatPolicy() {
         managerRoleId: ALTA_MOV_CHAT_LEADER_ROLE_ID,
         reportGuildId: ALTA_MOV_CHAT_REPORT_GUILD_ID,
         reportChannelId: ALTA_MOV_CHAT_REPORT_CHANNEL_ID,
+        rankChannelId: ALTA_MOV_CHAT_RANK_CHANNEL_ID,
       },
-      update: { managerRoleId: ALTA_MOV_CHAT_LEADER_ROLE_ID },
+      update: { managerRoleId: ALTA_MOV_CHAT_LEADER_ROLE_ID, rankChannelId: ALTA_MOV_CHAT_RANK_CHANNEL_ID },
     }),
     prisma.altaMovChatChannel.updateMany({
       where: { guildId: ALTA_MOV_CHAT_GUILD_ID, pointsPerMessage: { not: 0 } },
@@ -94,6 +104,75 @@ export async function applyAltaMovChatPolicy() {
       data: { scoredMessageCount: 0, chatPoints: 0, lastScoredAt: null },
     }),
   ]);
+}
+
+export async function refreshAltaMovChatRank(client: Client) {
+  const [config, stats, guild] = await Promise.all([
+    configFor(),
+    prisma.altaMovChatStat.findMany({ where: { guildId: ALTA_MOV_CHAT_GUILD_ID } }),
+    client.guilds.fetch(ALTA_MOV_CHAT_GUILD_ID),
+  ]);
+  const channel = await guild.channels.fetch(ALTA_MOV_CHAT_RANK_CHANNEL_ID);
+  if (!channel?.isTextBased() || !channel.isSendable() || !('messages' in channel)) {
+    throw new Error(`Canal do ranking Mov Chat <#${ALTA_MOV_CHAT_RANK_CHANNEL_ID}> indisponível.`);
+  }
+  const rankCar = guild.emojis.cache.find(emoji => emoji.name === 'Designsemnome1')?.toString() ?? '🏎️';
+  const rankNumber = guild.emojis.cache.find(emoji => emoji.name === 'Designsemnome10')?.toString() ?? '⚡';
+  const payload = movChatRankingMessage(stats.map(asRankingItem), config.cycleStartedAt, `${rankCar}${rankNumber}`, rankCar);
+  const existing = config.rankChannelId === channel.id && config.rankMessageId
+    ? await channel.messages.fetch(config.rankMessageId).catch(() => null)
+    : null;
+  let message;
+  if (existing) {
+    const editPayload = { ...payload } as any;
+    const files = (editPayload.files ?? []) as Array<{ name?: string }>;
+    const missingFiles = files.filter(file => !file.name || !existing.attachments.some(attachment => attachment.name === file.name));
+    if (files.length && !missingFiles.length) delete editPayload.files;
+    else if (files.length) editPayload.files = missingFiles;
+    message = await existing.edit(editPayload as MessageEditOptions);
+  } else {
+    message = await channel.send(payload as MessageCreateOptions);
+  }
+  if (config.rankChannelId !== channel.id || config.rankMessageId !== message.id) {
+    await prisma.altaMovChatConfig.update({
+      where: { guildId: ALTA_MOV_CHAT_GUILD_ID },
+      data: { rankChannelId: channel.id, rankMessageId: message.id },
+    });
+  }
+  return message.id;
+}
+
+function queueAltaMovChatRankRefresh(client: Client) {
+  rankRefreshDirty = true;
+  if (rankRefreshTimer || rankRefreshRunning) return;
+  rankRefreshTimer = setTimeout(() => {
+    rankRefreshTimer = null;
+    if (rankRefreshRunning || !rankRefreshDirty) return;
+    rankRefreshDirty = false;
+    rankRefreshRunning = true;
+    void refreshAltaMovChatRank(client)
+      .catch(error => console.error(`ranking Mov Chat: ${errorText(error)}`))
+      .finally(() => {
+        rankRefreshRunning = false;
+        if (rankRefreshDirty) queueAltaMovChatRankRefresh(client);
+      });
+  }, ALTA_MOV_CHAT_RANK_REFRESH_MS);
+  rankRefreshTimer.unref();
+}
+
+export async function startAltaMovChatRank(client: Client) {
+  rankRefreshRunning = true;
+  try {
+    await refreshAltaMovChatRank(client);
+  } finally {
+    rankRefreshRunning = false;
+    if (rankRefreshDirty) queueAltaMovChatRankRefresh(client);
+  }
+  if (rankSafetyTimerStarted) return;
+  rankSafetyTimerStarted = true;
+  setInterval(() => {
+    queueAltaMovChatRankRefresh(client);
+  }, 5 * 60_000).unref();
 }
 
 async function assertManager(message: Message<true>, config?: AltaMovChatConfig | null) {
@@ -153,7 +232,7 @@ async function closeCycle(client: Client, trigger: 'AUTOMATIC' | 'MANUAL', trigg
   if (reportLocks.has(guildId)) throw new Error('O ciclo do Mov Chat já está sendo encerrado. Aguarde.');
   reportLocks.add(guildId);
   try {
-    return await queueMutation(guildId, async () => {
+    const result = await queueMutation(guildId, async () => {
       const pending = await prisma.altaMovChatReport.findFirst({ where: { guildId, status: 'PENDING' } });
       if (pending) throw new Error('Já existe um relatório aguardando validação do Discord. O Angel tentará enviá-lo novamente.');
       const config = await configFor(guildId);
@@ -214,6 +293,8 @@ async function closeCycle(client: Client, trigger: 'AUTOMATIC' | 'MANUAL', trigg
         return { report, delivered: false, messageIds: [] };
       }
     });
+    queueAltaMovChatRankRefresh(client);
+    return result;
   } finally {
     reportLocks.delete(guildId);
   }
@@ -484,6 +565,7 @@ async function adjustPoints(message: Message<true>, direction: 1 | -1) {
     } });
     return saved;
   }));
+  queueAltaMovChatRankRefresh(message.client);
   await message.channel.send(movChatV2([
     `# ${direction > 0 ? '➕' : '➖'} | PONTUAÇÃO ATUALIZADA`,
     `**Membro:** <@${user.id}>`,
@@ -559,6 +641,7 @@ export async function trackAltaMovChatMessage(message: Message) {
       },
     });
   });
+  queueAltaMovChatRankRefresh(message.client);
   return true;
 }
 
