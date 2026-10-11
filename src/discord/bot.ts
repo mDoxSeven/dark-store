@@ -48,6 +48,8 @@ import {
 import { PASSTIME_GUILD_ID } from '../passtime/config.js';
 import { handleLeadershipButton, handleLeadershipCommand, handleLeadershipModal, refreshLinkedLeadershipSchedule } from '../leadership/module.js';
 import { LEADERSHIP_GUILD_ID } from '../leadership/config.js';
+import { ADD1CTION_GUILD_ID, add1ctionCommands } from '../add1ction/config.js';
+import { handleAdd1ctionButton, handleAdd1ctionCommand, handleAdd1ctionJoin } from '../add1ction/module.js';
 const errorText = (error: unknown) => error instanceof Error ? error.message.slice(0, 1500) : 'Ação não concluída.';
 
 async function handleCriar(interaction: ChatInputCommandInteraction) {
@@ -360,6 +362,8 @@ export async function startDiscord(token: string) {
   client.on(Events.InteractionCreate, interaction => {
     void (async () => {
       if (await handleEventsInteraction(interaction)) return;
+      if (interaction.isButton() && await handleAdd1ctionButton(interaction)) return;
+      if (interaction.isChatInputCommand() && await handleAdd1ctionCommand(interaction)) return;
       if (interaction.isButton() && interaction.customId.startsWith('alta:evento:')) { await handleAltaEventButton(interaction); return; }
       if (interaction.isStringSelectMenu() && interaction.customId === 'alta:suggestion:category') await selectSuggestion(interaction);
       else if (interaction.isButton() && interaction.customId.startsWith('alta:suggestion:')) await reviewSuggestion(interaction);
@@ -417,6 +421,7 @@ export async function startDiscord(token: string) {
   client.on(Events.GuildMemberAdd, joined => {
     void (async () => {
       await eventsJoin(joined);
+      await handleAdd1ctionJoin(joined);
       if (joined.guild.id !== STORE_GUILD_ID || joined.user.bot) return;
       const unverified = await joined.guild.roles.fetch(UNVERIFIED_ROLE_ID);
       if (!unverified || unverified.managed || !unverified.editable) throw new Error('Cargo inicial ausente ou acima do bot. Execute /criar após corrigir a hierarquia.');
@@ -498,6 +503,15 @@ export async function startDiscord(token: string) {
           console.log(`Módulo Liderança disponível no servidor ${LEADERSHIP_GUILD_ID}.`);
         }
         else console.warn(`Angel sem acesso ao servidor Liderança ${LEADERSHIP_GUILD_ID}.`);
+        const add1ctionGuild = await connected.guilds.fetch(ADD1CTION_GUILD_ID).catch(() => null);
+        if (add1ctionGuild) {
+          await add1ctionGuild.commands.set(add1ctionCommands.map(command => command.toJSON()))
+            .then(() => console.log(`/entrada e comandos básicos registrados no servidor ${ADD1CTION_GUILD_ID}.`))
+            .catch(error => console.error(`Comandos add1ction não registrados: ${errorText(error)}`));
+          console.log(`Módulo add1ction disponível no servidor ${ADD1CTION_GUILD_ID}.`);
+        } else {
+          console.warn(`Angel sem acesso ao servidor add1ction ${ADD1CTION_GUILD_ID}.`);
+        }
         connected.user.setPresence({ status: 'online', activities: [{ name: 'a dark store', type: ActivityType.Watching }] });
         configureDiscordRuntime(discordRuntime(connected, guild));
         await sweepClosedTickets(connected);
