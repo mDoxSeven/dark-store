@@ -210,6 +210,7 @@ test('agendamento atualiza o painel e dispara alertas automáticos', async () =>
   assert.match(source, /PASSTIME_USER_SCHEDULE_LIMIT/);
   assert.match(source, /scheduleBookingLocks/);
   assert.match(source, /if \(running\) return/);
+  assert.match(source, /scheduleSynced/);
 });
 
 test('ranking persiste pontos, histórico e sincroniza o painel', async () => {

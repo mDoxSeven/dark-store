@@ -1420,10 +1420,20 @@ export function startPasstimeReminders(client: Client) {
   void syncPasstimeEmojis(client)
     .catch(error => console.error(`passtime emojis: ${commandError(error)}`));
   let running = false;
+  let scheduleSynced = false;
   const run = () => {
     if (running) return;
     running = true;
-    void dispatchPasstimeReminders(client)
+    void (async () => {
+      if (!scheduleSynced) {
+        const guild = client.guilds.cache.get(PASSTIME_GUILD_ID);
+        if (guild) {
+          await refreshSchedule(guild);
+          scheduleSynced = true;
+        }
+      }
+      await dispatchPasstimeReminders(client);
+    })()
       .catch(error => console.error(`passtime lembretes: ${commandError(error)}`))
       .finally(() => { running = false; });
   };
