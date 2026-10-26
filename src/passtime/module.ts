@@ -19,7 +19,7 @@ import {
   announcementMessage, bankRequestMessage, bankWelcomeMessage, editorLauncherMessage,
   editorialPasstimeMessage, identificationMessage, passtimeV2, pointsMessage, scheduleActivityPicker, scheduleCancelPicker,
   rankResetConfirmation, rankingMessage, scheduleClearConfirmation, scheduleDayPicker, scheduleEditPicker,
-  scheduleMessage, scheduleSlotPicker, teamMessage, tutorialPasstimeMessages, verificationMessage,
+  scheduleMessage, schedulePostConfirmation, schedulePostResult, scheduleSlotPicker, teamMessage, tutorialPasstimeMessages, verificationMessage,
   type PasstimeEditorialPanelKey, type PasstimePresentation,
 } from './messages.js';
 import { syncPasstimeEmojis } from './emojis.js';
@@ -889,6 +889,65 @@ export async function handlePasstimeButton(interaction: ButtonInteraction) {
     return true;
   }
 
+  const postConfirmation = interaction.customId.match(/^passtime:schedule:(posted|not-posted):([^:]+):(\d{4}-\d{2}-\d{2}):(\d{17,20})$/);
+  if (postConfirmation) {
+    const [, answer, entryId, occurrenceDate, responsibleId] = postConfirmation;
+    const member = await interaction.guild.members.fetch(interaction.user.id);
+    if (interaction.user.id !== responsibleId && !await isController(member)) {
+      await interaction.reply({ content: 'Somente a pessoa responsável ou a gestão pode confirmar esta atividade.', flags: MessageFlags.Ephemeral });
+      return true;
+    }
+    await interaction.deferUpdate();
+    const entry = await prisma.passtimeScheduleEntry.findFirst({ where: {
+      id: entryId, guildId: interaction.guild.id, userId: responsibleId,
+    } });
+    if (!entry) {
+      const history = await prisma.passtimeScheduleHistory.findUnique({
+        where: { entryId_occurrenceDate: { entryId, occurrenceDate } },
+      });
+      const payload = passtimeV2(history
+        ? '## ✅ Atividade já encerrada\nEsta confirmação já foi registrada e o horário está disponível.'
+        : '## ⚠️ Horário não encontrado\nEsta reserva não está mais ativa.', {
+        banner: false, footer: 'Passtime • Alta',
+      });
+      await interaction.editReply({ components: payload.components, attachments: [] } as any);
+      return true;
+    }
+    const requestedPosted = answer === 'posted';
+    const result = await prisma.$transaction(async tx => {
+      const history = await tx.passtimeScheduleHistory.upsert({
+        where: { entryId_occurrenceDate: { entryId: entry.id, occurrenceDate } },
+        create: {
+          guildId: interaction.guild.id,
+          entryId: entry.id,
+          userId: responsibleId,
+          bankChannelId: interaction.channelId,
+          day: entry.day,
+          time: entry.time,
+          label: entry.label,
+          activityKey: entry.activityKey,
+          occurrenceDate,
+          outcome: requestedPosted ? 'POSTED' : 'NOT_POSTED',
+          confirmedBy: interaction.user.id,
+        },
+        update: {},
+      });
+      const removed = await tx.passtimeScheduleEntry.deleteMany({ where: {
+        id: entry.id, guildId: interaction.guild.id, userId: responsibleId,
+      } });
+      return { history, removed };
+    });
+    const posted = result.history.outcome === 'POSTED';
+    await refreshSchedule(interaction.guild);
+    await interaction.editReply({ components: schedulePostResult(entry, posted).components, attachments: [] } as any);
+    await logPasstime(interaction.guild, [
+      `<@${interaction.user.id}> confirmou **${posted ? 'postada' : 'não postada'}** a atividade de <@${responsibleId}>.`,
+      `**${entry.day} ${passtimeScheduleTime(entry.time)}** — **${entry.label}**.`,
+      `Horário liberado: **${result.removed.count === 1 ? 'sim' : 'já estava livre'}**.`,
+    ].join('\n'));
+    return true;
+  }
+
   if (interaction.customId === PASSTIME_IDS.scheduleEditOpen) {
     const member = await interaction.guild.members.fetch(interaction.user.id);
     await requireController(member);
@@ -1274,15 +1333,33 @@ async function sendScheduleAlert(
   if (!entry.userId) return;
   const key = `${occurrenceDate}:${entry.time}`;
   if (kind === 'reminder' && entry.lastReminderKey === key) return;
-  if (kind === 'start' && entry.lastStartKey === key) return;
+  if (kind === 'start' && entry.lastStartKey) return;
   const title = kind === 'reminder' ? 'Atividade em 2 horas' : 'Hora da atividade';
   const timeLabel = passtimeScheduleTime(entry.time);
   const publicText = kind === 'reminder'
     ? `<@${entry.userId}>, sua atividade **${entry.label}** começa às **${timeLabel}**. Prepare a matéria e envie para correção dentro do prazo.`
     : `<@${entry.userId}>, chegou o horário de **${entry.label}**: **${timeLabel}**.`;
-  const privateText = kind === 'reminder'
-    ? `Sua atividade **${entry.label}** começa às **${timeLabel}**. Este é o lembrete automático de 2 horas.`
-    : `Chegou o horário da sua atividade **${entry.label}**: **${timeLabel}**.`;
+  const privateText = `Sua atividade **${entry.label}** começa às **${timeLabel}**. Este é o lembrete automático de 2 horas.`;
+
+  if (kind === 'start') {
+    const bank = await prisma.passtimeBank.findUnique({ where: {
+      guildId_userId: { guildId: guild.id, userId: entry.userId },
+    } });
+    if (!bank?.channelId) {
+      await logPasstime(guild, `Não foi possível pedir a confirmação de **${entry.label}** para <@${entry.userId}>: banca não encontrada.`);
+      await prisma.passtimeScheduleEntry.update({ where: { id: entry.id }, data: { lastStartKey: key } });
+      return;
+    }
+    const destination = await fetchText(guild, bank.channelId);
+    if (!destination) {
+      await logPasstime(guild, `Não foi possível pedir a confirmação de **${entry.label}** para <@${entry.userId}>: canal da banca indisponível.`);
+      await prisma.passtimeScheduleEntry.update({ where: { id: entry.id }, data: { lastStartKey: key } });
+      return;
+    }
+    await destination.send(schedulePostConfirmation(entry, occurrenceDate));
+    await prisma.passtimeScheduleEntry.update({ where: { id: entry.id }, data: { lastStartKey: key } });
+    return;
+  }
 
   await channel?.send(passtimeV2(`## ⏰ ${title}\n${publicText}`, {
     banner: false,
@@ -1296,7 +1373,7 @@ async function sendScheduleAlert(
   })).catch(() => null);
   await prisma.passtimeScheduleEntry.update({
     where: { id: entry.id },
-    data: kind === 'reminder' ? { lastReminderKey: key } : { lastStartKey: key },
+    data: { lastReminderKey: key },
   });
 }
 
@@ -1310,8 +1387,10 @@ async function dispatchPasstimeScheduleAlerts(guild: Guild) {
     where: { guildId: PASSTIME_GUILD_ID, userId: { not: null } },
   });
   for (const entry of entries) {
-    if (entry.day === current.day && entry.time === current.time) {
+    if (entry.lastStartKey) continue;
+    if (entry.day === current.day && entry.time <= current.time) {
       await sendScheduleAlert(guild, channel, entry, 'start', current.date);
+      continue;
     }
     const advance = saoPauloClock(new Date(now.getTime() + entry.reminderMinutes * 60_000));
     if (entry.day === advance.day && entry.time === advance.time) {

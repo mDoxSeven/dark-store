@@ -40,6 +40,8 @@ export const PASSTIME_IDS = {
   scheduleClearOpen: 'passtime:schedule:clear-open',
   scheduleClearConfirm: 'passtime:schedule:clear-confirm',
   scheduleClearCancel: 'passtime:schedule:clear-cancel',
+  schedulePosted: 'passtime:schedule:posted',
+  scheduleNotPosted: 'passtime:schedule:not-posted',
   rankRefresh: 'passtime:rank:refresh',
   rankMine: 'passtime:rank:mine',
   rankResetConfirm: 'passtime:rank:reset-confirm',

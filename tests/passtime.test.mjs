@@ -10,7 +10,7 @@ import {
 import { PASSTIME_IMPLEMENTED_COMMANDS } from '../src/passtime/module.ts';
 import {
   bankRequestMessage, editorialPasstimeMessage, identificationMessage, pointsMessage, rankResetConfirmation, rankingMessage,
-  scheduleActivityPicker, scheduleDayPicker, scheduleMessage, scheduleSlotPicker, teamMessage, tutorialPasstimeMessages,
+  scheduleActivityPicker, scheduleDayPicker, scheduleMessage, schedulePostConfirmation, scheduleSlotPicker, teamMessage, tutorialPasstimeMessages,
   verificationMessage,
 } from '../src/passtime/messages.ts';
 import { passtimeButtonEmoji, passtimeEmoji } from '../src/passtime/emojis.ts';
@@ -85,6 +85,15 @@ test('cronograma oferece autoagendamento, consulta, cancelamento e atualização
   assert.match(slots, /12h00/);
   const activity = JSON.stringify(scheduleActivityPicker(0, 'tarde-1', PASSTIME_ACTIVITIES).components);
   assert.match(activity, /passtime:schedule:activity:0:tarde-1/);
+
+  const confirmation = JSON.stringify(schedulePostConfirmation({
+    id: 'entry-1', guildId: PASSTIME_GUILD_ID, day: 'segunda', time: '09:30', label: 'Alta Opina',
+    userId: '1002774556269891694', activityKey: 'alta-opina', reminderMinutes: 120,
+    lastReminderKey: null, lastStartKey: '2026-10-26:09:30', position: 0, createdAt: new Date(), updatedAt: new Date(),
+  }, '2026-10-26').components);
+  assert.match(confirmation, /Hora da sua atividade/);
+  assert.match(confirmation, /passtime:schedule:posted:entry-1:2026-10-26:1002774556269891694/);
+  assert.match(confirmation, /passtime:schedule:not-posted:entry-1:2026-10-26:1002774556269891694/);
 });
 
 test('painéis Passtime usam Components V2, botão cinza e artes configuráveis', () => {
@@ -175,7 +184,7 @@ test('integração do Angel encaminha comandos, botões, formulários e lembrete
   assert.match(source, /handlePasstimeSelect\(interaction\)/);
   assert.match(source, /startPasstimeReminders\(connected\)/);
   const schema = await readFile(new URL('../prisma/schema.prisma', import.meta.url), 'utf8');
-  for (const model of ['PasstimeConfig', 'PasstimeBank', 'PasstimeScheduleEntry', 'PasstimeReminder', 'PasstimeScore', 'PasstimePointLog', 'PasstimePanel']) {
+  for (const model of ['PasstimeConfig', 'PasstimeBank', 'PasstimeScheduleEntry', 'PasstimeScheduleHistory', 'PasstimeReminder', 'PasstimeScore', 'PasstimePointLog', 'PasstimePanel']) {
     assert.match(schema, new RegExp(`model ${model}`));
   }
   assert.match(schema, /lastReminderKey\s+String\?/);
@@ -192,6 +201,10 @@ test('agendamento atualiza o painel e dispara alertas automáticos', async () =>
   assert.match(source, /lastStartKey/);
   assert.match(source, /scheduleEditModal/);
   assert.match(source, /scheduleClearConfirm/);
+  assert.match(source, /tx\.passtimeScheduleHistory\.upsert/);
+  assert.match(source, /schedulePostConfirmation/);
+  assert.match(source, /bank\.channelId/);
+  assert.match(source, /entry\.time <= current\.time/);
   assert.match(source, /await refreshLinkedLeadershipSchedule\(guild\.client\)/);
   assert.match(source, /Digite CONFIRMO para reservar/);
   assert.match(source, /PASSTIME_USER_SCHEDULE_LIMIT/);

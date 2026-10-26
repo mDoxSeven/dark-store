@@ -497,6 +497,44 @@ export function scheduleClearConfirmation(userId: string, count: number) {
   });
 }
 
+export function schedulePostConfirmation(entry: PasstimeScheduleEntry, occurrenceDate: string) {
+  if (!entry.userId) throw new Error('O horário precisa ter uma pessoa responsável.');
+  return passtimeV2([
+    '## ⏰ Hora da sua atividade',
+    `<@${entry.userId}>, chegou o horário de publicar **${entry.label}**.`,
+    '',
+    `**Dia:** ${entry.day}`,
+    `**Horário:** ${passtimeScheduleTime(entry.time)}`,
+    '',
+    'Assim que finalizar, confirme abaixo se a matéria foi publicada. A resposta ficará registrada e este horário será liberado para uma nova reserva.',
+  ].join('\n'), {
+    banner: false,
+    footer: 'Passtime • Alta • Horário de Brasília',
+    allowedUsers: [entry.userId],
+    components: [{ type: 1, components: [
+      { type: 2, style: 3, custom_id: `${PASSTIME_IDS.schedulePosted}:${entry.id}:${occurrenceDate}:${entry.userId}`, label: 'Postei', emoji: { name: '✅' } },
+      { type: 2, style: 4, custom_id: `${PASSTIME_IDS.scheduleNotPosted}:${entry.id}:${occurrenceDate}:${entry.userId}`, label: 'Não postei', emoji: { name: '✖️' } },
+    ] }],
+  });
+}
+
+export function schedulePostResult(entry: Pick<PasstimeScheduleEntry, 'day' | 'time' | 'label' | 'userId'>, posted: boolean) {
+  return passtimeV2([
+    posted ? '## ✅ Postagem confirmada' : '## 📝 Atividade encerrada',
+    `**Matéria:** ${entry.label}`,
+    `**Horário:** ${entry.day} • ${passtimeScheduleTime(entry.time)}`,
+    `**Responsável:** <@${entry.userId}>`,
+    '',
+    posted
+      ? 'A publicação foi registrada e o horário já está livre para outra pessoa.'
+      : 'A matéria foi registrada como não publicada e o horário já está livre para outra pessoa.',
+  ].join('\n'), {
+    banner: false,
+    footer: 'Passtime • Alta • Registro preservado no histórico',
+    allowedUsers: entry.userId ? [entry.userId] : [],
+  });
+}
+
 export function scheduleDayPicker(entries: PasstimeScheduleEntry[] = [], bankChannelId?: string | null) {
   const current = entries.length
     ? entries.map(entry => `• **${entry.day}** · ${passtimeScheduleTime(entry.time)} — ${entry.label}`).join('\n')

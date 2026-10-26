@@ -282,6 +282,7 @@ model PasstimeConfig {
   updatedAt            DateTime                @updatedAt
   banks                PasstimeBank[]
   scheduleEntries      PasstimeScheduleEntry[]
+  scheduleHistory      PasstimeScheduleHistory[]
   reminders            PasstimeReminder[]
   scores               PasstimeScore[]
   pointLogs            PasstimePointLog[]
@@ -362,6 +363,28 @@ model PasstimeScheduleEntry {
   config    PasstimeConfig @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
 
   @@index([guildId, day, time])
+}
+
+model PasstimeScheduleHistory {
+  id             String         @id @default(cuid())
+  guildId        String
+  entryId        String
+  userId         String
+  bankChannelId  String?
+  day            String
+  time           String
+  label          String
+  activityKey    String?
+  occurrenceDate String
+  outcome        String
+  confirmedBy    String
+  confirmedAt    DateTime       @default(now())
+  createdAt      DateTime       @default(now())
+  config         PasstimeConfig @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  @@unique([entryId, occurrenceDate])
+  @@index([guildId, userId, confirmedAt])
+  @@index([guildId, outcome, confirmedAt])
 }
 
 model PasstimeReminder {
