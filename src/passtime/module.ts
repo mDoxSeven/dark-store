@@ -413,9 +413,17 @@ async function requireScheduleMember(guild: Guild, userId: string) {
 
 const scheduleActivity = (value: string) => PASSTIME_ACTIVITIES.find(activity => activity.value === value) ?? null;
 
-async function ensureScheduleSlotAvailable(guildId: string, day: string, time: string, excludeId?: string) {
+async function ensureScheduleSlotAvailable(
+  guildId: string,
+  day: string,
+  time: string,
+  excludeId?: string,
+  assignedOnly = false,
+) {
   const conflict = await prisma.passtimeScheduleEntry.findFirst({ where: {
-    guildId, day, time, ...(excludeId ? { id: { not: excludeId } } : {}),
+    guildId, day, time,
+    ...(excludeId ? { id: { not: excludeId } } : {}),
+    ...(assignedOnly ? { userId: { not: null } } : {}),
   } });
   if (conflict) throw new Error(`O horário **${day} ${time}** já está reservado para **${conflict.label}**.`);
 }
@@ -1126,7 +1134,7 @@ export async function handlePasstimeSelect(interaction: StringSelectMenuInteract
     const dayIndex = Number(interaction.values[0]);
     if (!Number.isInteger(dayIndex) || !PASSTIME_DAYS[dayIndex]) throw new Error('Dia selecionado inválido.');
     const occupied = await prisma.passtimeScheduleEntry.findMany({
-      where: { guildId: interaction.guild.id, day: PASSTIME_DAYS[dayIndex] }, select: { time: true },
+      where: { guildId: interaction.guild.id, day: PASSTIME_DAYS[dayIndex], userId: { not: null } }, select: { time: true },
     });
     const occupiedTimes = new Set(occupied.map(entry => entry.time));
     if (!PASSTIME_SCHEDULE_SLOTS.some(slot => !occupiedTimes.has(slot.start))) {
@@ -1143,7 +1151,7 @@ export async function handlePasstimeSelect(interaction: StringSelectMenuInteract
     const day = PASSTIME_DAYS[dayIndex];
     const slot = passtimeScheduleSlot(slotKey);
     if (!Number.isInteger(dayIndex) || !day || !slot) throw new Error('Dia ou horário inválido.');
-    await ensureScheduleSlotAvailable(interaction.guild.id, day, slot.start);
+    await ensureScheduleSlotAvailable(interaction.guild.id, day, slot.start, undefined, true);
     const payload = scheduleActivityPicker(dayIndex, slot.key, PASSTIME_ACTIVITIES);
     await interaction.update({ components: payload.components } as any);
     return true;
@@ -1158,7 +1166,7 @@ export async function handlePasstimeSelect(interaction: StringSelectMenuInteract
     const slot = passtimeScheduleSlot(slotKey);
     const activity = scheduleActivity(activityKey);
     if (!Number.isInteger(dayIndex) || !day || !slot || !activity) throw new Error('Dia, horário ou matéria inválidos.');
-    await ensureScheduleSlotAvailable(interaction.guild.id, day, slot.start);
+    await ensureScheduleSlotAvailable(interaction.guild.id, day, slot.start, undefined, true);
     const fields = [modalField('confirmation', 'Digite CONFIRMO para reservar', TextInputStyle.Short, true)];
     if (activity.value === 'outra') fields.unshift(modalField('customLabel', 'Nome da matéria', TextInputStyle.Short, true));
     await interaction.showModal(
@@ -1230,16 +1238,40 @@ export async function handlePasstimeModal(interaction: ModalSubmitInteraction) {
         guildId: interaction.guild.id, userId: interaction.user.id,
       } });
       if (ownCount >= PASSTIME_USER_SCHEDULE_LIMIT) throw new Error(`Você já atingiu o limite de ${PASSTIME_USER_SCHEDULE_LIMIT} matérias no cronograma.`);
-      await ensureScheduleSlotAvailable(interaction.guild.id, day, slot.start);
-      await prisma.passtimeScheduleEntry.create({ data: {
-        guildId: interaction.guild.id,
-        day,
-        time: slot.start,
-        label,
-        userId: interaction.user.id,
-        activityKey: activity.value,
-        reminderMinutes: PASSTIME_SCHEDULE_REMINDER_MINUTES,
-      } });
+      await ensureScheduleSlotAvailable(interaction.guild.id, day, slot.start, undefined, true);
+      const placeholder = await prisma.passtimeScheduleEntry.findFirst({
+        where: { guildId: interaction.guild.id, day, time: slot.start, userId: null },
+        orderBy: { createdAt: 'asc' },
+      });
+      if (placeholder) {
+        await prisma.$transaction([
+          prisma.passtimeScheduleEntry.update({ where: { id: placeholder.id }, data: {
+            label,
+            userId: interaction.user.id,
+            activityKey: activity.value,
+            reminderMinutes: PASSTIME_SCHEDULE_REMINDER_MINUTES,
+            lastReminderKey: null,
+            lastStartKey: null,
+          } }),
+          prisma.passtimeScheduleEntry.deleteMany({ where: {
+            guildId: interaction.guild.id,
+            day,
+            time: slot.start,
+            userId: null,
+            id: { not: placeholder.id },
+          } }),
+        ]);
+      } else {
+        await prisma.passtimeScheduleEntry.create({ data: {
+          guildId: interaction.guild.id,
+          day,
+          time: slot.start,
+          label,
+          userId: interaction.user.id,
+          activityKey: activity.value,
+          reminderMinutes: PASSTIME_SCHEDULE_REMINDER_MINUTES,
+        } });
+      }
       await refreshSchedule(interaction.guild);
     } finally {
       lockKeys.forEach(key => scheduleBookingLocks.delete(key));

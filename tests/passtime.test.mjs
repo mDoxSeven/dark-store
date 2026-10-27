@@ -209,6 +209,10 @@ test('agendamento atualiza o painel e dispara alertas automáticos', async () =>
   assert.match(source, /Digite CONFIRMO para reservar/);
   assert.match(source, /PASSTIME_USER_SCHEDULE_LIMIT/);
   assert.match(source, /scheduleBookingLocks/);
+  assert.match(source, /assignedOnly/);
+  assert.match(source, /userId: \{ not: null \}/);
+  assert.match(source, /const placeholder = await prisma\.passtimeScheduleEntry\.findFirst/);
+  assert.match(source, /where: \{ id: placeholder\.id \}/);
   assert.match(source, /if \(running\) return/);
   assert.match(source, /scheduleSynced/);
 });
